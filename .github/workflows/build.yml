@@ -1,0 +1,43 @@
+name: Build Executables
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger only when you push a tag like v1.0
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        pip install pyinstaller
+
+    - name: Build with PyInstaller (Windows)
+      if: matrix.os == 'windows-latest'
+      run: pyinstaller --noconsole --onefile --name "Downs-Win" downs.py
+
+    - name: Build with PyInstaller (macOS)
+      if: matrix.os == 'macos-latest'
+      run: pyinstaller --noconsole --onefile --windowed --name "Downs-Mac" downs.py
+
+    - name: Upload Release Assets
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/Downs-Win.exe
+          dist/Downs-Mac
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
