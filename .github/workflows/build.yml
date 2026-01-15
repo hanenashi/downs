@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch: # Allows manual run from GitHub Web UI
+  workflow_dispatch: # Allows manual run from Web UI
 
 jobs:
   build:
@@ -32,14 +32,24 @@ jobs:
 
     - name: Build with PyInstaller (macOS)
       if: matrix.os == 'macos-latest'
-      run: pyinstaller --noconsole --onefile --name "Downs-Mac" downs.py
+      run: pyinstaller --noconsole --onefile --name "Downs-Mac-Binary" downs.py
 
+    # This part makes files available on MANUAL runs (found at bottom of Actions page)
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: downs-binaries-${{ matrix.os }}
+        path: |
+          dist/Downs-Win.exe
+          dist/Downs-Mac-Binary
+
+    # This part creates the official GitHub Release (only for TAGS)
     - name: Upload Release Assets
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: |
           dist/Downs-Win.exe
-          dist/Downs-Mac
+          dist/Downs-Mac-Binary
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
