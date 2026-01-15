@@ -337,4 +337,8 @@ class TaskRow:
 if __name__ == "__main__":
     root = tk.Tk()
     app = FfmpegDownloaderApp(root)
+<<<<<<< HEAD
     root.mainloop()
+=======
+    root.mainloop()
+>>>>>>> 2a0cd124b57a5949b93bd08d7e16cb8544e5a005
