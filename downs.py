@@ -82,19 +82,14 @@ class FfmpegDownloaderApp:
         self.log("Ready.")
         self.check_ffmpeg_status()
 
-    # --- Core Helpers ---
-
     def resolve_ffmpeg(self):
-        # 1. Configured path
         if self.config["ffmpeg_path"] and os.path.exists(self.config["ffmpeg_path"]):
             return self.config["ffmpeg_path"]
-        # 2. Script Directory
         script_dir = os.path.dirname(os.path.abspath(__file__))
         exe_name = "ffmpeg.exe" if os.name == 'nt' else "ffmpeg"
         local_path = os.path.join(script_dir, exe_name)
         if os.path.exists(local_path):
             return local_path
-        # 3. System PATH
         return shutil.which("ffmpeg")
 
     def check_ffmpeg_status(self):
@@ -113,13 +108,11 @@ class FfmpegDownloaderApp:
             self.log_text.config(state="disabled")
         self.root.after(0, _log)
 
-    # --- Settings ---
     def open_settings(self):
         win = tk.Toplevel(self.root)
         win.title("Settings")
         win.geometry("500x350")
         
-        # Save Dir
         tk.Label(win, text="Download Folder:", anchor="w").pack(fill="x", padx=10, pady=(10, 0))
         f_frame = tk.Frame(win)
         f_frame.pack(fill="x", padx=10)
@@ -127,7 +120,6 @@ class FfmpegDownloaderApp:
         tk.Entry(f_frame, textvariable=dir_var).pack(side="left", fill="x", expand=True)
         tk.Button(f_frame, text="Browse", command=lambda: dir_var.set(filedialog.askdirectory() or dir_var.get())).pack(side="left")
 
-        # FFmpeg
         tk.Label(win, text="FFmpeg Path (Optional):", anchor="w").pack(fill="x", padx=10, pady=(10, 0))
         ff_frame = tk.Frame(win)
         ff_frame.pack(fill="x", padx=10)
@@ -139,7 +131,6 @@ class FfmpegDownloaderApp:
             if f: ff_var.set(f)
         tk.Button(ff_frame, text="Browse", command=browse_ffmpeg).pack(side="left")
         
-        # Auto Remove
         ar_var = tk.BooleanVar(value=self.config["auto_remove"])
         tk.Checkbutton(win, text="Auto-remove finished jobs", variable=ar_var).pack(anchor="w", padx=10, pady=10)
 
@@ -153,7 +144,6 @@ class FfmpegDownloaderApp:
             
         tk.Button(win, text="Save & Close", command=save, bg="#dddddd").pack(pady=20)
 
-    # --- Task Logic ---
     def handle_paste(self, event):
         try:
             content = self.root.clipboard_get()
@@ -186,16 +176,12 @@ class FfmpegDownloaderApp:
         t.start()
     
     def delete_task(self, task_ui):
-        """Called by the TaskRow or Auto-remove logic to cleanup."""
         if task_ui in self.tasks:
             self.tasks.remove(task_ui)
-        # Safely destroy the UI element
         self.root.after(0, task_ui.frame.destroy)
 
     def process_download(self, task, ffmpeg_bin):
         filepath = os.path.join(self.config["save_dir"], f"{task.filename}.mp4")
-        
-        # Probe
         task.update_status("Probing...")
         duration = self.get_duration(ffmpeg_bin, task.url)
         task.duration = duration
@@ -214,11 +200,8 @@ class FfmpegDownloaderApp:
                 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
             process = subprocess.Popen(
-                cmd, 
-                stdout=subprocess.PIPE, 
-                stderr=subprocess.PIPE, 
-                universal_newlines=True,
-                startupinfo=startupinfo
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                universal_newlines=True, startupinfo=startupinfo
             )
             task.process = process
 
@@ -236,22 +219,17 @@ class FfmpegDownloaderApp:
             if process.poll() == 0:
                 task.update_status("Done")
                 task.update_progress(100, "100%")
-                task.mark_finished() # Changes button to Delete
+                task.mark_finished()
                 self.log(f"Finished: {task.filename}")
-                
-                # Auto Remove
                 if self.config["auto_remove"]:
-                    # Wait 1.5s then trigger delete
                     self.root.after(1500, lambda: self.delete_task(task))
             else:
                 if task.cancelled:
                     task.update_status("Cancelled")
-                    task.mark_finished()
                 else:
                     task.update_status("Error")
-                    task.mark_finished()
                     self.log(f"Error: {task.filename}", is_error=True)
-
+                task.mark_finished()
         except Exception as e:
             self.log(f"System Error: {str(e)}", is_error=True)
             task.mark_finished()
@@ -301,7 +279,6 @@ class TaskRow:
         self.status_label = tk.Label(self.frame, text="Queued", width=10, bg="#ffffff", font=("Arial", 9))
         self.status_label.pack(side="left", padx=5)
 
-        # Single Button for Cancel/Delete
         self.action_btn = tk.Button(self.frame, text="[X]", command=self.on_click, fg="red", relief="flat", width=5)
         self.action_btn.pack(side="right", padx=5)
 
@@ -313,12 +290,9 @@ class TaskRow:
         self.app.root.after(0, lambda: self.status_label.config(text=text))
 
     def on_click(self):
-        """Handle click based on state."""
         if self.is_finished:
-            # Delete state
             self.app.delete_task(self)
         else:
-            # Cancel state
             self.cancel()
 
     def cancel(self):
@@ -326,19 +300,12 @@ class TaskRow:
         if self.process and self.process.poll() is None:
             self.process.terminate()
             self.update_status("Cancelling...")
-        # Note: We don't delete here; we wait for process_download to finish and call mark_finished
 
     def mark_finished(self):
         self.is_finished = True
-        def _ui():
-            self.action_btn.config(text="[Del]", fg="black")
-        self.app.root.after(0, _ui)
+        self.app.root.after(0, lambda: self.action_btn.config(text="[Del]", fg="black"))
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = FfmpegDownloaderApp(root)
-<<<<<<< HEAD
     root.mainloop()
-=======
-    root.mainloop()
->>>>>>> 2a0cd124b57a5949b93bd08d7e16cb8544e5a005
