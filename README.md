@@ -25,7 +25,7 @@ This tool is a wrapper for **FFmpeg**. You must have it installed:
    - Copy an M3U8 URL to your clipboard.
    - Focus the app and press `Cmd+V`.
    - Enter a filename and hit Enter.
-   - 
+
  3. **Settings:**
    - Click the ⚙ icon to set your default download folder and toggle auto-removal of finished tasks.
 
