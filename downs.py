@@ -6,10 +6,11 @@ import re
 import os
 import json
 import shutil
-import time
 
 # --- Configuration ---
-CONFIG_FILE = "settings.json"
+# Fix for Mac: Save settings in the User's Home directory so it's never lost
+CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".downs_config.json")
+
 DEFAULT_CONFIG = {
     "save_dir": os.path.join(os.path.expanduser("~"), "Desktop"),
     "ffmpeg_path": "",
@@ -36,26 +37,34 @@ class FfmpegDownloaderApp:
     def __init__(self, root):
         self.root = root
         self.root.title("M3U8 Downloader Pro")
-        self.root.geometry("750x550")
+        self.root.geometry("800x600")
         
+        # Polish: Use native OS theme if available (makes Mac look like Mac)
+        style = ttk.Style()
+        if 'aqua' in style.theme_names():
+            style.theme_use('aqua')
+            
         self.config = load_config()
         self.tasks = []
 
         # --- Top Bar ---
-        top_frame = tk.Frame(root, pady=10, padx=10)
+        top_frame = ttk.Frame(root, padding=10)
         top_frame.pack(fill="x")
         
-        tk.Label(top_frame, text="URL:").pack(side="left")
-        self.url_entry = tk.Entry(top_frame)
-        self.url_entry.pack(side="left", fill="x", expand=True, padx=5)
+        ttk.Label(top_frame, text="M3U8 URL:", font=("Helvetica", 12, "bold")).pack(side="left")
+        self.url_entry = ttk.Entry(top_frame)
+        self.url_entry.pack(side="left", fill="x", expand=True, padx=10)
         
-        tk.Button(top_frame, text="Download", command=self.manual_add_task).pack(side="left", padx=2)
-        tk.Button(top_frame, text="⚙ Settings", command=self.open_settings).pack(side="left", padx=2)
+        ttk.Button(top_frame, text="Download", command=self.manual_add_task).pack(side="left", padx=2)
+        ttk.Button(top_frame, text="⚙ Settings", command=self.open_settings).pack(side="left", padx=2)
 
-        # --- Task List ---
-        self.canvas = tk.Canvas(root, borderwidth=0, background="#f0f0f0")
-        self.scrollbar = tk.Scrollbar(root, orient="vertical", command=self.canvas.yview)
-        self.scrollable_frame = tk.Frame(self.canvas, background="#f0f0f0")
+        # --- Task List (Polished) ---
+        list_container = ttk.Frame(root, padding=(10, 0))
+        list_container.pack(side="top", fill="both", expand=True)
+        
+        self.canvas = tk.Canvas(list_container, borderwidth=0, highlightthickness=0, background="#ececec")
+        self.scrollbar = ttk.Scrollbar(list_container, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.canvas)
 
         self.scrollable_frame.bind(
             "<Configure>",
@@ -65,22 +74,37 @@ class FfmpegDownloaderApp:
         self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        self.canvas.pack(side="top", fill="both", expand=True, padx=10)
+        self.canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar.pack(side="right", fill="y")
         
-        # --- Logs ---
-        log_frame = tk.LabelFrame(root, text="Logs", padx=5, pady=5)
-        log_frame.pack(fill="x", padx=10, pady=10, side="bottom")
+        # --- Logs Section (with scrollbar & copy button) ---
+        log_outer_frame = ttk.LabelFrame(root, text="System Logs", padding=5)
+        log_outer_frame.pack(fill="x", padx=10, pady=10, side="bottom")
         
-        self.log_text = tk.Text(log_frame, height=5, state="disabled", font=("Menlo", 9))
-        self.log_text.pack(fill="both", expand=True)
+        # Small top bar for logs
+        log_tools = ttk.Frame(log_outer_frame)
+        log_tools.pack(fill="x")
+        ttk.Button(log_tools, text="Copy Logs", command=self.copy_logs).pack(side="right", pady=2)
+        
+        # Text and Scrollbar
+        log_inner = ttk.Frame(log_outer_frame)
+        log_inner.pack(fill="both", expand=True)
+        
+        self.log_text = tk.Text(log_inner, height=6, state="disabled", font=("Menlo", 11), wrap="word")
+        log_scroll = ttk.Scrollbar(log_inner, orient="vertical", command=self.log_text.yview)
+        self.log_text.configure(yscrollcommand=log_scroll.set)
+        
+        self.log_text.pack(side="left", fill="both", expand=True)
+        log_scroll.pack(side="right", fill="y")
 
         # --- Bindings ---
         self.root.bind_all("<Command-v>", self.handle_paste)
         self.root.bind_all("<Control-v>", self.handle_paste)
 
-        self.log("Ready.")
+        self.log("Ready. Press Cmd+V anywhere to paste a link and start.")
         self.check_ffmpeg_status()
+
+    # --- Core Helpers ---
 
     def resolve_ffmpeg(self):
         if self.config["ffmpeg_path"] and os.path.exists(self.config["ffmpeg_path"]):
@@ -97,42 +121,45 @@ class FfmpegDownloaderApp:
         if path:
             self.log(f"FFmpeg found: {path}")
         else:
-            self.log("WARNING: FFmpeg not found! Check Settings.", is_error=True)
+            self.log("WARNING: FFmpeg not found! Please check Settings.", is_error=True)
 
     def log(self, message, is_error=False):
         def _log():
             self.log_text.config(state="normal")
-            prefix = "[!!] " if is_error else "[>>] "
+            prefix = "[ERROR] " if is_error else "[INFO] "
             self.log_text.insert("end", prefix + message + "\n")
             self.log_text.see("end")
             self.log_text.config(state="disabled")
         self.root.after(0, _log)
 
+    def copy_logs(self):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(self.log_text.get("1.0", tk.END))
+        messagebox.showinfo("Copied", "Logs copied to clipboard!")
+
+    # --- Settings ---
     def open_settings(self):
         win = tk.Toplevel(self.root)
         win.title("Settings")
-        win.geometry("500x350")
+        win.geometry("550x300")
+        win.configure(padx=20, pady=20)
         
-        tk.Label(win, text="Download Folder:", anchor="w").pack(fill="x", padx=10, pady=(10, 0))
-        f_frame = tk.Frame(win)
-        f_frame.pack(fill="x", padx=10)
+        ttk.Label(win, text="Download Folder:", font=("Helvetica", 12, "bold")).pack(anchor="w", pady=(0, 5))
+        f_frame = ttk.Frame(win)
+        f_frame.pack(fill="x", pady=(0, 15))
         dir_var = tk.StringVar(value=self.config["save_dir"])
-        tk.Entry(f_frame, textvariable=dir_var).pack(side="left", fill="x", expand=True)
-        tk.Button(f_frame, text="Browse", command=lambda: dir_var.set(filedialog.askdirectory() or dir_var.get())).pack(side="left")
+        ttk.Entry(f_frame, textvariable=dir_var).pack(side="left", fill="x", expand=True, padx=(0, 10))
+        ttk.Button(f_frame, text="Browse...", command=lambda: dir_var.set(filedialog.askdirectory() or dir_var.get())).pack(side="left")
 
-        tk.Label(win, text="FFmpeg Path (Optional):", anchor="w").pack(fill="x", padx=10, pady=(10, 0))
-        ff_frame = tk.Frame(win)
-        ff_frame.pack(fill="x", padx=10)
+        ttk.Label(win, text="Custom FFmpeg Path (Optional):", font=("Helvetica", 12, "bold")).pack(anchor="w", pady=(0, 5))
+        ff_frame = ttk.Frame(win)
+        ff_frame.pack(fill="x", pady=(0, 15))
         ff_var = tk.StringVar(value=self.config["ffmpeg_path"])
-        tk.Entry(ff_frame, textvariable=ff_var).pack(side="left", fill="x", expand=True)
-        
-        def browse_ffmpeg():
-            f = filedialog.askopenfilename()
-            if f: ff_var.set(f)
-        tk.Button(ff_frame, text="Browse", command=browse_ffmpeg).pack(side="left")
+        ttk.Entry(ff_frame, textvariable=ff_var).pack(side="left", fill="x", expand=True, padx=(0, 10))
+        ttk.Button(ff_frame, text="Browse...", command=lambda: ff_var.set(filedialog.askopenfilename() or ff_var.get())).pack(side="left")
         
         ar_var = tk.BooleanVar(value=self.config["auto_remove"])
-        tk.Checkbutton(win, text="Auto-remove finished jobs", variable=ar_var).pack(anchor="w", padx=10, pady=10)
+        ttk.Checkbutton(win, text="Auto-remove finished jobs from queue", variable=ar_var).pack(anchor="w", pady=10)
 
         def save():
             self.config["save_dir"] = dir_var.get()
@@ -142,8 +169,9 @@ class FfmpegDownloaderApp:
             self.check_ffmpeg_status()
             win.destroy()
             
-        tk.Button(win, text="Save & Close", command=save, bg="#dddddd").pack(pady=20)
+        ttk.Button(win, text="Save Settings", command=save).pack(pady=20)
 
+    # --- Task Logic ---
     def handle_paste(self, event):
         try:
             content = self.root.clipboard_get()
@@ -170,6 +198,9 @@ class FfmpegDownloaderApp:
 
         task_ui = TaskRow(self.scrollable_frame, filename, url, self)
         self.tasks.append(task_ui)
+        
+        # Update canvas scroll region after adding row
+        self.root.after(100, lambda: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         
         t = threading.Thread(target=self.process_download, args=(task_ui, ffmpeg_bin))
         t.daemon = True
@@ -267,20 +298,30 @@ class TaskRow:
         self.duration = 0
         self.is_finished = False
 
-        self.frame = tk.Frame(parent, pady=5, bg="#ffffff", bd=1, relief="solid")
-        self.frame.pack(fill="x", pady=2)
+        # Polish: Use grid layout for perfectly aligned columns
+        self.frame = ttk.Frame(parent, padding=5, relief="groove")
+        # Let the frame stretch across the canvas
+        self.frame.pack(fill="x", pady=2, padx=5, expand=True)
+        
+        self.frame.columnconfigure(1, weight=1) # Makes progress bar expand
 
-        tk.Label(self.frame, text=filename, width=20, anchor="w", bg="#ffffff", font=("Arial", 10, "bold")).pack(side="left", padx=5)
+        # Column 0: Filename
+        short_name = filename if len(filename) < 25 else filename[:22] + "..."
+        self.lbl_name = ttk.Label(self.frame, text=short_name, width=25, font=("Helvetica", 11, "bold"))
+        self.lbl_name.grid(row=0, column=0, sticky="w", padx=(5, 10))
 
+        # Column 1: Progress Bar
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(self.frame, variable=self.progress_var, maximum=100)
-        self.progress_bar.pack(side="left", padx=5, fill="x", expand=True)
+        self.progress_bar.grid(row=0, column=1, sticky="ew", padx=10)
 
-        self.status_label = tk.Label(self.frame, text="Queued", width=10, bg="#ffffff", font=("Arial", 9))
-        self.status_label.pack(side="left", padx=5)
+        # Column 2: Status
+        self.status_label = ttk.Label(self.frame, text="Queued", width=10, anchor="center")
+        self.status_label.grid(row=0, column=2, padx=10)
 
-        self.action_btn = tk.Button(self.frame, text="[X]", command=self.on_click, fg="red", relief="flat", width=5)
-        self.action_btn.pack(side="right", padx=5)
+        # Column 3: Button
+        self.action_btn = ttk.Button(self.frame, text="Cancel", command=self.on_click, width=8)
+        self.action_btn.grid(row=0, column=3, padx=(10, 5))
 
     def update_progress(self, val, text):
         self.app.root.after(0, lambda: self.progress_var.set(val))
@@ -303,7 +344,7 @@ class TaskRow:
 
     def mark_finished(self):
         self.is_finished = True
-        self.app.root.after(0, lambda: self.action_btn.config(text="[Del]", fg="black"))
+        self.app.root.after(0, lambda: self.action_btn.config(text="Clear"))
 
 if __name__ == "__main__":
     root = tk.Tk()
