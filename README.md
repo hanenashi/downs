@@ -1,36 +1,32 @@
+<div align="center">
+  <img src="downs.png" alt="Downs icon" width="300">
+</div>
+
 # Downs: Dead-Simple M3U8 Downloader
 
-A lightweight, Python-based GUI for downloading M3U8 streaming playlists into MP4 files using FFmpeg. Designed to be fast, minimal, and keyboard-friendly.
+A lightweight Python GUI for downloading M3U8 / HLS streaming playlists into MP4 files using FFmpeg.
+
+It is intentionally small: paste URL, name file, download. No cathedral. Just a useful little goblin with a hard hat.
 
 ## Features
-- **Smart Paste:** Press `Cmd+V` (Mac) or `Ctrl+V` (Windows) to instantly start a download from a copied URL.
-- **Queue Management:** Download multiple streams simultaneously.
-- **Progress Tracking:** Probes stream duration to provide accurate progress bars.
-- **/Auto-Cleanup:** Optional setting to automatically remove finished jobs from the list.
-- **Portable:** Works on macOS (High Sierra+) and Windows.
+
+- **Paste-to-download:** Press `Cmd+V` on macOS or `Ctrl+V` on Windows/Linux to detect a copied stream URL.
+- **Manual URL entry:** Paste or type a stream URL into the input field and click `Download`.
+- **Multiple downloads:** Start several downloads at once.
+- **Progress tracking:** Probes stream duration when available and shows progress.
+- **Safer filenames:** Cleans invalid filename characters before saving.
+- **No silent overwrite:** If a file already exists, Downs automatically appends `_2`, `_3`, etc.
+- **Useful error logs:** FFmpeg failure output is shown in the log box.
+- **Auto-cleanup option:** Finished jobs can be removed from the list automatically.
+- **Portable:** Works on macOS and Windows as long as FFmpeg is available.
 
 ## Prerequisites
-This tool is a wrapper for **FFmpeg**. You must have it installed:
-- **macOS:** `brew install ffmpeg` or download the binary.
-- **Windows:** Download from [ffmpeg.org](https://ffmpeg.org/download.html).
 
-*Note: You can specify a custom path to the FFmpeg binary in the app settings if it's not in your system PATH.*
+Downs is a wrapper around **FFmpeg**. You must have FFmpeg installed.
 
-## How to Use
-1. **Run the app:**
-   ```bash
-   python3 downs.py
-   
- 2. **Download a stream:**
-   - Copy an M3U8 URL to your clipboard.
-   - Focus the app and press `Cmd+V`.
-   - Enter a filename and hit Enter.
+### macOS
 
- 3. **Settings:**
-   - Click the ⚙ icon to set your default download folder and toggle auto-removal of finished tasks.
+Using Homebrew:
 
-## Settings
-Configuration is stored locally in `settings.json`. This file is ignored by Git to keep your local paths private.
-
-## License
-MIT
+```bash
+brew install ffmpeg
