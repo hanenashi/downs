@@ -6,10 +6,15 @@ import re
 import os
 import json
 import shutil
+import secrets
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 
 # --- Configuration ---
 CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".downs_config.json")
+FEED_HOST = "127.0.0.1"
+FEED_PORT = 8765
 
 DEFAULT_CONFIG = {
     "save_dir": os.path.join(os.path.expanduser("~"), "Desktop"),
@@ -48,6 +53,9 @@ class FfmpegDownloaderApp:
 
         self.config = load_config()
         self.tasks = []
+        self.feed_server = None
+
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
         # --- Top Bar ---
         top_frame = ttk.Frame(root, padding=10)
@@ -123,6 +131,7 @@ class FfmpegDownloaderApp:
 
         self.log("Ready. Paste an M3U8 URL with Cmd+V / Ctrl+V, or enter it manually.")
         self.check_ffmpeg_status()
+        self.start_feed_server()
 
     # --- UI helpers ---
 
@@ -148,6 +157,76 @@ class FfmpegDownloaderApp:
         self.log_text.config(state="normal")
         self.log_text.delete("1.0", tk.END)
         self.log_text.config(state="disabled")
+
+    def on_close(self):
+        if self.feed_server:
+            self.feed_server.shutdown()
+            self.feed_server.server_close()
+
+        self.root.destroy()
+
+    def start_feed_server(self):
+        app = self
+
+        class FeedHandler(BaseHTTPRequestHandler):
+            def log_message(self, format, *args):
+                return
+
+            def end_headers(self):
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type")
+                super().end_headers()
+
+            def do_OPTIONS(self):
+                self.send_response(204)
+                self.end_headers()
+
+            def do_POST(self):
+                if self.path != "/download":
+                    self.send_json(404, {"ok": False, "error": "Not found"})
+                    return
+
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw_body = self.rfile.read(min(length, 65536))
+
+                try:
+                    payload = json.loads(raw_body.decode("utf-8"))
+                except Exception:
+                    self.send_json(400, {"ok": False, "error": "Expected JSON body"})
+                    return
+
+                url = app.extract_url_from_text(payload.get("url", "")) or str(payload.get("url", "")).strip()
+
+                if not app.looks_like_stream_url(url):
+                    self.send_json(400, {"ok": False, "error": "Expected an http/https stream URL"})
+                    return
+
+                if not app.resolve_ffmpeg():
+                    self.send_json(503, {"ok": False, "error": "FFmpeg not found in Downs"})
+                    return
+
+                filename = app.random_download_name()
+                app.root.after(0, lambda: app.start_download(url, filename, source="browser addon"))
+                self.send_json(202, {"ok": True, "filename": filename})
+
+            def send_json(self, status, payload):
+                body = json.dumps(payload).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        try:
+            self.feed_server = ThreadingHTTPServer((FEED_HOST, FEED_PORT), FeedHandler)
+        except OSError as e:
+            self.log(f"Browser addon feed unavailable on http://{FEED_HOST}:{FEED_PORT}: {e}", is_error=True)
+            return
+
+        t = threading.Thread(target=self.feed_server.serve_forever, daemon=True)
+        t.start()
+        self.log(f"Browser addon feed listening at http://{FEED_HOST}:{FEED_PORT}/download")
 
     # --- Core helpers ---
 
@@ -228,6 +307,11 @@ class FfmpegDownloaderApp:
         # Keep it permissive. Some HLS URLs are signed and ugly.
         # But at least require a real URL, not random pasted text saying "http lol".
         return True
+
+    def random_download_name(self):
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        suffix = secrets.token_hex(3)
+        return f"downs_{timestamp}_{suffix}"
 
     def parse_time(self, time_str):
         try:
@@ -351,7 +435,7 @@ class FfmpegDownloaderApp:
             self.start_download(url, filename)
             self.url_entry.delete(0, "end")
 
-    def start_download(self, url, filename):
+    def start_download(self, url, filename, source="manual"):
         ffmpeg_bin = self.resolve_ffmpeg()
 
         if not ffmpeg_bin:
@@ -359,6 +443,9 @@ class FfmpegDownloaderApp:
             return
 
         safe_name = self.safe_filename(filename)
+
+        if source != "manual":
+            self.log(f"Received from {source}: {url}")
 
         task_ui = TaskRow(self.scrollable_frame, safe_name, url, self)
         self.tasks.append(task_ui)
