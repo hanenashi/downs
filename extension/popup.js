@@ -1,3 +1,4 @@
+const ext = globalThis.browser || globalThis.chrome;
 const statusEl = document.getElementById("status");
 const linksEl = document.getElementById("links");
 const refreshButton = document.getElementById("refresh");
@@ -14,7 +15,7 @@ async function sendToDowns(url, button) {
   button.disabled = true;
   button.textContent = "Sending…";
 
-  const response = await chrome.runtime.sendMessage({ type: "send-to-downs", url });
+  const response = await ext.runtime.sendMessage({ type: "send-to-downs", url });
   if (response?.ok) {
     button.textContent = "Sent";
     setStatus(`Download started as ${response.filename}.`);
@@ -67,7 +68,7 @@ function renderLinks(links) {
 
 async function loadLinks() {
   setStatus("Looking for M3U8 links on this tab…");
-  const response = await chrome.runtime.sendMessage({ type: "get-links" });
+  const response = await ext.runtime.sendMessage({ type: "get-links" });
   renderLinks(response?.links || []);
 }
 

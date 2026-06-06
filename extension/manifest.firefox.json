@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Downs Link Sucker",
+  "version": "0.1.0",
+  "description": "Find M3U8/HLS URLs on the current tab and feed them to the Downs desktop app.",
+  "permissions": ["activeTab", "storage", "tabs", "webRequest"],
+  "host_permissions": ["<all_urls>", "http://127.0.0.1:8765/*"],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Send HLS link to Downs"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "downs-link-sucker@downs.local",
+      "strict_min_version": "115.0"
+    }
+  }
+}

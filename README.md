@@ -55,3 +55,13 @@ The addon sends the selected URL to the running Downs app. Downs starts the FFmp
 4. Select this repo's `extension/` folder.
 
 The addon is intentionally small: it does not download anything itself, render previews, or scrape page HTML. It only observes network responses that look like M3U8/HLS playlists and hands the chosen URL to Downs.
+
+### Firefox build
+
+Firefox needs its own manifest because Firefox Manifest V3 uses `background.scripts` while Chromium uses `background.service_worker`. Build the Firefox package with:
+
+```bash
+python3 tools/build_firefox_extension.py
+```
+
+That command reuses the extension source files, writes an unpacked Firefox extension to `build/firefox-extension/`, and writes a zip package to `dist/downs-link-sucker-firefox.zip`. For quick local testing, open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…**, and select `build/firefox-extension/manifest.json`.

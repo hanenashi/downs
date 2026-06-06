@@ -1,3 +1,4 @@
+const ext = globalThis.browser || globalThis.chrome;
 const DOWNS_FEED_URL = "http://127.0.0.1:8765/download";
 const MAX_LINKS_PER_TAB = 50;
 
@@ -32,12 +33,12 @@ function looksLikeHls(details) {
 
 async function getTabLinks(tabId) {
   const key = `tab:${tabId}`;
-  const stored = await chrome.storage.session.get(key);
+  const stored = await ext.storage.session.get(key);
   return stored[key] || [];
 }
 
 async function setTabLinks(tabId, links) {
-  await chrome.storage.session.set({ [`tab:${tabId}`]: links.slice(0, MAX_LINKS_PER_TAB) });
+  await ext.storage.session.set({ [`tab:${tabId}`]: links.slice(0, MAX_LINKS_PER_TAB) });
 }
 
 async function rememberLink(details) {
@@ -62,31 +63,31 @@ async function rememberLink(details) {
   });
 
   await setTabLinks(details.tabId, links);
-  await chrome.action.setBadgeText({ tabId: details.tabId, text: String(Math.min(links.length, 99)) });
-  await chrome.action.setBadgeBackgroundColor({ tabId: details.tabId, color: "#2d7d46" });
+  await ext.action.setBadgeText({ tabId: details.tabId, text: String(Math.min(links.length, 99)) });
+  await ext.action.setBadgeBackgroundColor({ tabId: details.tabId, color: "#2d7d46" });
 }
 
-chrome.webRequest.onHeadersReceived.addListener(
+ext.webRequest.onHeadersReceived.addListener(
   rememberLink,
   { urls: ["<all_urls>"], types: ["xmlhttprequest", "media", "other"] },
   ["responseHeaders"]
 );
 
-chrome.tabs.onRemoved.addListener((tabId) => {
-  chrome.storage.session.remove(`tab:${tabId}`);
+ext.tabs.onRemoved.addListener((tabId) => {
+  ext.storage.session.remove(`tab:${tabId}`);
 });
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+ext.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === "loading") {
-    chrome.storage.session.remove(`tab:${tabId}`);
-    chrome.action.setBadgeText({ tabId, text: "" });
+    ext.storage.session.remove(`tab:${tabId}`);
+    ext.action.setBadgeText({ tabId, text: "" });
   }
 });
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     if (message?.type === "get-links") {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const [tab] = await ext.tabs.query({ active: true, currentWindow: true });
       const links = tab?.id === undefined ? [] : await getTabLinks(tab.id);
       sendResponse({ ok: true, links });
       return;
