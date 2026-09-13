@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Downloads · Downs</title>
+    <link rel="stylesheet" href="downloads.css">
+  </head>
+  <body>
+    <header class="manager-header">
+      <div class="manager-title">
+        <span class="brand">Downs</span>
+        <span class="title-divider" aria-hidden="true"></span>
+        <h1>Downloads</h1>
+      </div>
+      <div class="manager-summary">
+        <p id="summary" aria-live="polite">Loading downloads…</p>
+        <button id="clear-exported" class="text-action" type="button" hidden>Clear exported</button>
+      </div>
+    </header>
+
+    <main>
+      <section id="jobs" class="job-list" aria-label="Downs download jobs"></section>
+      <section id="empty" class="empty-state" hidden>
+        <h2>No downloads yet</h2>
+        <p>Start one from an inspected stream in the Downs popup.</p>
+      </section>
+    </main>
+
+    <p id="announcer" class="visually-hidden" aria-live="polite"></p>
+
+    <script src="job-core.js"></script>
+    <script src="download-core.js"></script>
+    <script src="downloads.js"></script>
+  </body>
+</html>

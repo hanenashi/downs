@@ -11,10 +11,11 @@ const requiredFiles = [
   "background.js",
   "download-core.js",
   "download-worker.js",
-  "download.css",
-  "download.html",
-  "download.js",
+  "downloads.css",
+  "downloads.html",
+  "downloads.js",
   "hls-parser.js",
+  "job-core.js",
   "popup.css",
   "popup.html",
   "popup.js",
@@ -47,9 +48,20 @@ const shippedSource = await Promise.all(
   requiredFiles.map((filename) => readFile(path.join(extensionDir, filename), "utf8"))
 );
 const combinedSource = shippedSource.join("\n");
+const popupCss = await readFile(path.join(extensionDir, "popup.css"), "utf8");
 
 assert.doesNotMatch(combinedSource, /127\.0\.0\.1|localhost/i, "extension must not use a localhost bridge");
 assert.doesNotMatch(combinedSource, /send-to-downs/i, "legacy desktop feed messaging must stay removed");
 assert.doesNotMatch(combinedSource, /innerHTML\s*=/, "remote playlist text must not reach innerHTML");
+assert.match(
+  popupCss,
+  /body\s*{[^}]*width:\s*420px;[^}]*min-width:\s*320px;/s,
+  "popup body needs an intrinsic Firefox-safe width"
+);
+assert.doesNotMatch(
+  popupCss,
+  /min-width:\s*min\([^;]*100vw/i,
+  "popup minimum width must not collapse with Firefox's initial viewport"
+);
 
 console.log("Extension manifests and shipped files look valid.");

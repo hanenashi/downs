@@ -6,21 +6,20 @@ if (!globalThis.DownsHls && typeof importScripts === "function") {
 if (!globalThis.DownsDownload && typeof importScripts === "function") {
   importScripts("download-core.js");
 }
+if (!globalThis.DownsJobs && typeof importScripts === "function") {
+  importScripts("job-core.js");
+}
 
 const MAX_LINKS_PER_TAB = 50;
 const MAX_PLAYLIST_BYTES = 5 * 1024 * 1024;
 const PLAYLIST_TIMEOUT_MS = 20_000;
-const DOWNLOAD_JOB_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 const tabQueues = new Map();
 const requestContexts = new Map();
-const storageArea = ext.storage.session || ext.storage.local;
+const tabStorageArea = ext.storage.session || ext.storage.local;
+const jobStorageArea = ext.storage.local;
 
 function storageKey(tabId) {
   return `tab:${tabId}`;
-}
-
-function jobStorageKey(id) {
-  return `job:${id}`;
 }
 
 function normalizeUrl(url) {
@@ -111,12 +110,12 @@ function registerRequestHeaderListener() {
 
 async function getTabLinks(tabId) {
   const key = storageKey(tabId);
-  const stored = await storageArea.get(key);
+  const stored = await tabStorageArea.get(key);
   return stored[key] || [];
 }
 
 async function setTabLinks(tabId, links) {
-  await storageArea.set({ [storageKey(tabId)]: links.slice(0, MAX_LINKS_PER_TAB) });
+  await tabStorageArea.set({ [storageKey(tabId)]: links.slice(0, MAX_LINKS_PER_TAB) });
 }
 
 function queueTabUpdate(tabId, operation) {
@@ -290,10 +289,10 @@ async function startDownloadJob(message) {
 
   const [sourceTab] = await ext.tabs.query({ active: true, currentWindow: true });
   const id = createJobId();
-  const job = {
+  const job = globalThis.DownsJobs.createJob({
     id,
-    createdAt: Date.now(),
-    url: inspection.fetch.finalUrl,
+    playlistUrl: inspection.fetch.finalUrl,
+    sourcePageTitle: sourceTab?.title || "",
     filename: globalThis.DownsDownload.suggestFilename(
       sourceTab?.title || "downs-video",
       message.variantLabel || ""
@@ -301,29 +300,30 @@ async function startDownloadJob(message) {
     variantLabel: message.variantLabel || "",
     hasSeparateAudio: Boolean(message.hasSeparateAudio),
     supportSummary: eligibility.reason
-  };
+  });
 
-  await storageArea.set({ [jobStorageKey(id)]: job });
-  await ext.tabs.create({ url: ext.runtime.getURL(`download.html#${encodeURIComponent(id)}`) });
+  await jobStorageArea.set({ [globalThis.DownsJobs.jobKey(id)]: job });
+  await openDownloadsManager();
   return { ok: true, id };
 }
 
-async function getDownloadJob(id) {
-  if (typeof id !== "string" || !/^[a-z0-9-]{8,80}$/i.test(id)) {
-    return { ok: false, error: { code: "job", message: "Invalid download job." } };
-  }
+async function getDownloadJobs() {
+  const stored = await jobStorageArea.get(null);
+  return Object.entries(stored)
+    .filter(([key, value]) => globalThis.DownsJobs.isJobKey(key) && value?.id)
+    .map(([, value]) => value);
+}
 
-  const key = jobStorageKey(id);
-  const stored = await storageArea.get(key);
-  const job = stored[key];
-  if (!job) {
-    return { ok: false, error: { code: "job", message: "This download job expired." } };
+async function openDownloadsManager() {
+  const managerUrl = ext.runtime.getURL("downloads.html");
+  const tabs = await ext.tabs.query({});
+  const existing = tabs.find((tab) => tab.url?.startsWith(managerUrl));
+  if (existing?.id !== undefined) {
+    await ext.tabs.update(existing.id, { active: true });
+    return existing.id;
   }
-  if (Date.now() - job.createdAt > DOWNLOAD_JOB_MAX_AGE_MS) {
-    await storageArea.remove(key);
-    return { ok: false, error: { code: "job", message: "This download job expired." } };
-  }
-  return { ok: true, job };
+  const created = await ext.tabs.create({ url: managerUrl });
+  return created?.id;
 }
 
 registerRequestHeaderListener();
@@ -345,13 +345,13 @@ ext.webRequest.onErrorOccurred.addListener(
 );
 
 ext.tabs.onRemoved.addListener((tabId) => {
-  storageArea.remove(storageKey(tabId));
+  tabStorageArea.remove(storageKey(tabId));
   tabQueues.delete(tabId);
 });
 
 ext.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === "loading") {
-    storageArea.remove(storageKey(tabId));
+    tabStorageArea.remove(storageKey(tabId));
     ext.action.setBadgeText({ tabId, text: "" });
   }
 });
@@ -375,14 +375,13 @@ ext.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       return;
     }
 
-    if (message?.type === "get-download-job") {
-      sendResponse(await getDownloadJob(message.id));
+    if (message?.type === "get-download-summary") {
+      sendResponse({ ok: true, ...globalThis.DownsJobs.summarizeJobs(await getDownloadJobs()) });
       return;
     }
 
-    if (message?.type === "finish-download-job") {
-      await storageArea.remove(jobStorageKey(message.id));
-      sendResponse({ ok: true });
+    if (message?.type === "open-downloads-manager") {
+      sendResponse({ ok: true, tabId: await openDownloadsManager() });
       return;
     }
 

@@ -17,10 +17,11 @@ let activeController = null;
 let activeSink = null;
 
 class DownloadError extends Error {
-  constructor(code, message) {
+  constructor(code, message, detail = {}) {
     super(message);
     this.name = "DownloadError";
     this.code = code;
+    Object.assign(this, detail);
   }
 }
 
@@ -38,7 +39,7 @@ function ensureNotCancelled(signal) {
   }
 }
 
-async function fetchBytes(url, signal, kind) {
+async function fetchBytes(url, signal, kind, detail = {}) {
   let response;
   try {
     response = await fetch(url, {
@@ -51,13 +52,18 @@ async function fetchBytes(url, signal, kind) {
     if (signal.aborted || error?.name === "AbortError") {
       throw abortError();
     }
-    throw new DownloadError("network", `${kind} request failed: ${error?.message || "network error"}`);
+    throw new DownloadError(
+      "network",
+      `${kind} request failed: ${error?.message || "network error"}`,
+      detail
+    );
   }
 
   if (!response.ok) {
     throw new DownloadError(
       "http",
-      `${kind} request failed with HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}.`
+      `${kind} request failed with HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}.`,
+      { ...detail, httpStatus: response.status }
     );
   }
 
@@ -115,7 +121,7 @@ async function createOutputSink(jobId) {
         async finish() {
           try {
             await writable.close();
-            return { file: await handle.getFile(), size, storageName };
+            return { file: null, size, storageName };
           } catch (error) {
             throw new DownloadError(
               "storage",
@@ -214,7 +220,8 @@ function createTransmuxer() {
 }
 
 async function runJob(job) {
-  if (!job?.id || !job?.url) {
+  const playlistUrl = job?.playlistUrl || job?.url;
+  if (!job?.id || !playlistUrl) {
     throw new DownloadError("job", "The download job is missing its playlist URL.");
   }
 
@@ -222,7 +229,7 @@ async function runJob(job) {
   const { signal } = activeController;
   post("progress", { phase: "playlist", message: "Checking playlist…", completed: 0, total: 0, bytes: 0 });
 
-  const playlist = await fetchPlaylist(job.url, signal);
+  const playlist = await fetchPlaylist(playlistUrl, signal);
   const eligibility = globalThis.DownsDownload.validateDirectPlaylist(playlist, {
     hasSeparateAudio: Boolean(job.hasSeparateAudio)
   });
@@ -245,7 +252,7 @@ async function runJob(job) {
 
   post("progress", {
     phase: "segments",
-    message: "Building MP4",
+    message: "Downloading",
     completed: 0,
     total: playlist.segments.length,
     bytes: 0
@@ -254,9 +261,11 @@ async function runJob(job) {
   await globalThis.DownsDownload.processInOrder(
     playlist.segments,
     FETCH_CONCURRENCY,
-    async (segment) => {
+    async (segment, index) => {
       ensureNotCancelled(signal);
-      const response = await fetchBytes(segment.url, signal, "Media segment");
+      const response = await fetchBytes(segment.url, signal, "Media segment", {
+        segmentIndex: index + 1
+      });
       inputBytes += response.bytes.byteLength;
       return response.bytes;
     },
@@ -295,7 +304,7 @@ async function runJob(job) {
 
       post("progress", {
         phase: "segments",
-        message: "Building MP4",
+        message: "Downloading",
         completed: index + 1,
         total: playlist.segments.length,
         bytes: inputBytes,
@@ -310,8 +319,8 @@ async function runJob(job) {
   }
 
   post("progress", {
-    phase: "saving",
-    message: "Preparing browser save…",
+    phase: "remuxing",
+    message: "Finalizing MP4…",
     completed: playlist.segments.length,
     total: playlist.segments.length,
     bytes: inputBytes,
@@ -324,6 +333,7 @@ async function runJob(job) {
     file: result.file,
     size: result.size,
     storageName: result.storageName,
+    outputStorage: result.storageName ? "opfs" : "memory",
     sourceBytes: inputBytes
   });
 }
@@ -348,7 +358,9 @@ self.addEventListener("message", (event) => {
       }
       post(error?.code === "cancelled" ? "cancelled" : "error", {
         code: error?.code || "internal",
-        message: error?.message || "Unexpected download error."
+        message: error?.message || "Unexpected download error.",
+        segmentIndex: error?.segmentIndex,
+        httpStatus: error?.httpStatus
       });
     })
     .finally(() => {

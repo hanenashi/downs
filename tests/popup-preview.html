@@ -33,8 +33,19 @@
       const now = Date.now();
 
       globalThis.chrome = {
+        storage: {
+          onChanged: { addListener() {} }
+        },
         runtime: {
           async sendMessage(message) {
+            if (message.type === "get-download-summary") {
+              return { ok: true, active: 1, ready: 1 };
+            }
+
+            if (message.type === "open-downloads-manager") {
+              return { ok: true, tabId: 42 };
+            }
+
             if (message.type === "get-links") {
               return {
                 ok: true,

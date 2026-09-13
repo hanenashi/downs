@@ -3,6 +3,8 @@ const statusEl = document.getElementById("status");
 const linksEl = document.getElementById("links");
 const inspectorEl = document.getElementById("inspector");
 const refreshButton = document.getElementById("refresh");
+const downloadsButton = document.getElementById("open-downloads");
+const downloadCountEl = document.getElementById("download-count");
 
 let detectedLinks = [];
 let selectedUrl = "";
@@ -272,7 +274,7 @@ function renderDownloadAction(playlist, response, variantLabel, context) {
   button.type = "button";
   button.addEventListener("click", async () => {
     button.disabled = true;
-    button.textContent = "Opening download page…";
+    button.textContent = "Adding to Downloads…";
     try {
       const result = await ext.runtime.sendMessage({
         type: "start-download",
@@ -281,16 +283,16 @@ function renderDownloadAction(playlist, response, variantLabel, context) {
         hasSeparateAudio: Boolean(context.hasSeparateAudio)
       });
       if (!result?.ok) {
-        throw new Error(result?.error?.message || "The download page could not be opened.");
+        throw new Error(result?.error?.message || "The download could not be added.");
       }
-      button.textContent = "Download page opened";
+      button.textContent = "Added to Downloads";
     } catch (error) {
       button.disabled = false;
       button.textContent = variantLabel ? `Download ${variantLabel}` : "Download MP4";
       const prior = section.querySelector(".download-error");
       prior?.remove();
       section.append(
-        createElement("p", "download-error", error?.message || "The download page could not be opened.")
+        createElement("p", "download-error", error?.message || "The download could not be added.")
       );
     }
   });
@@ -299,7 +301,7 @@ function renderDownloadAction(playlist, response, variantLabel, context) {
     createElement(
       "p",
       "download-reason",
-      "Opens a tab to fetch four segments at a time, remux locally, and save through the browser."
+      "Adds a job to Downs Downloads, where it remuxes locally and waits for you to save it."
     )
   );
   return section;
@@ -458,5 +460,34 @@ async function loadLinks() {
   }
 }
 
+async function loadDownloadSummary() {
+  try {
+    const response = await ext.runtime.sendMessage({ type: "get-download-summary" });
+    const count = (Number(response?.active) || 0) + (Number(response?.ready) || 0);
+    downloadCountEl.textContent = count ? `(${count})` : "";
+    downloadsButton.setAttribute(
+      "aria-label",
+      count ? `Downloads, ${count} active or ready to save` : "Downloads"
+    );
+  } catch (_error) {
+    downloadCountEl.textContent = "";
+  }
+}
+
 refreshButton.addEventListener("click", loadLinks);
-loadLinks();
+downloadsButton.addEventListener("click", async () => {
+  downloadsButton.disabled = true;
+  try {
+    await ext.runtime.sendMessage({ type: "open-downloads-manager" });
+  } finally {
+    downloadsButton.disabled = false;
+  }
+});
+ext.storage.onChanged.addListener((_changes, areaName) => {
+  if (areaName === "local") {
+    void loadDownloadSummary();
+  }
+});
+
+void loadLinks();
+void loadDownloadSummary();

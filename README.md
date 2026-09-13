@@ -12,9 +12,10 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.1 is experimental. The current **Milestone B** build adds the first
-honest DIRECT download path: finite, unencrypted, muxed MPEG-TS VOD containing
-H.264 video and AAC audio.
+Downs 2.2 is experimental. The current **Milestone C** build keeps the bounded
+DIRECT download path from Milestone B and adds a persistent Downs-owned
+Downloads manager. The supported media shape is still finite, unencrypted,
+muxed MPEG-TS VOD containing H.264 video and AAC audio.
 
 It can:
 
@@ -27,13 +28,15 @@ It can:
 - identify MPEG-TS, fMP4/CMAF, `EXT-X-MAP`, and `EXT-X-KEY`;
 - distinguish ordinary AES-128 metadata from likely protected media;
 - report HTTP, timeout, HTML-response, and other useful failure reasons.
-- open a dedicated, long-lived processing page for a supported media playlist;
+- open or focus a dedicated Downloads manager for supported media playlists;
 - fetch up to four MPEG-TS segments concurrently while consuming them in order;
 - remux MPEG-TS to fragmented MP4 in JavaScript with the bundled mux.js library;
 - stream output to browser-private storage when available, with a bounded
   in-memory fallback;
-- show progress, support cancellation, remove partial output, and hand the
-  finished MP4 to the browser Downloads API.
+- persist queued, active, finished, failed, and cancelled job metadata;
+- retain finished private MP4s until **Save to device** or **Delete** is chosen;
+- save again without rebuilding, retry failures from the current playlist, and
+  remove partial output when a job is cancelled.
 
 The old Python/Tkinter + FFmpeg desktop application is preserved at the
 [`v1-python`](https://github.com/hanenashi/downs/tree/v1-python) tag.
@@ -53,9 +56,15 @@ inspect it. If it is a master playlist, select a variant to inspect that child
 media playlist. A **Download** button appears only when the selected media
 playlist passes the current DIRECT support checks.
 
-Downloading opens a separate extension tab. Review or edit the filename, choose
-**Start download**, and keep that tab open until the browser save finishes.
-Downs rechecks the playlist before fetching its segments.
+Choosing **Download** creates a queued job and opens the Downs Downloads tab.
+That tab owns processing, progress, cancellation, retry, and export. Downs
+rechecks the current playlist before fetching its segments. When a job reaches
+**Done**, choose **Save to device** to invoke the browser save dialog. The
+private copy stays available for **Save again** until it is deleted or aged out
+of the bounded 30-job history.
+
+The popup's **Downloads** entry shows active and ready-to-save counts and opens
+the existing manager tab when one is already present.
 
 ## Kiwi Android compatibility target
 
@@ -91,8 +100,9 @@ Use open or user-authorized streams for testing.
 
 Downs requests HTTP(S) host access because HLS playlists and their child
 renditions may be served from unrelated CDNs. It uses `webRequest` to observe
-playlist requests, `storage` to retain small per-tab metadata and short-lived
-download jobs, and `downloads` to save the completed MP4 through the browser.
+playlist requests, `storage` to retain small per-tab metadata and persistent
+download job records, and `downloads` to export a completed MP4 through the
+browser only after the user chooses **Save to device**.
 
 The extension does not store cookie or authorization values. It records only
 whether those headers were observed, plus non-secret request/page metadata used
@@ -111,9 +121,11 @@ own servers.
 - Extension-context fetches can still fail when a site requires request
   provenance or headers that extensions cannot reproduce.
 - Browsers without Origin Private File System support use an in-memory fallback
-  capped at 256 MiB. Available storage quota can still limit larger files.
-- Closing the processing page interrupts its work; use **Cancel** when possible
-  so partial private-storage output can be removed immediately.
+  capped at 256 MiB. Keep the Downloads tab open while such an output is waiting
+  to be saved. Available storage quota can still limit larger files.
+- Closing the Downloads tab interrupts active work. On reopening, Downs marks
+  that job failed, cleans its partial output, and offers **Retry**. Completed
+  OPFS-backed outputs survive closing the tab.
 - Firefox has a generated experimental build, but Chrome desktop and Kiwi are
   the first compatibility targets.
 
@@ -126,7 +138,8 @@ node --test tests/*.test.js
 node --check extension/hls-parser.js
 node --check extension/download-core.js
 node --check extension/download-worker.js
-node --check extension/download.js
+node --check extension/job-core.js
+node --check extension/downloads.js
 node --check extension/background.js
 node --check extension/popup.js
 node tools/validate-extension.mjs
@@ -153,9 +166,9 @@ extension packages.
 
 ## Direction
 
-The next DIRECT work is compatibility hardening on physical Kiwi, larger-file
-stress testing, and deciding which currently rejected layouts can be added
-without weakening failure clarity. CAPTURE and DUMP remain later, separate
-strategies; neither is silently substituted for DIRECT.
+The next DIRECT work is compatibility hardening on physical Kiwi and Firefox,
+larger-file stress testing, and deciding which currently rejected layouts can
+be added without weakening failure clarity. CAPTURE and DUMP remain later,
+separate strategies; neither is silently substituted for DIRECT.
 
 Small streams. Clear answers. No cathedral.

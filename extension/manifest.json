@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Downs",
-  "version": "2.1.0",
-  "description": "Detect HLS playlists and directly save supported MPEG-TS VOD streams as MP4.",
+  "version": "2.2.0",
+  "description": "Detect HLS streams, build supported MPEG-TS VOD as MP4, and manage private downloads.",
   "permissions": ["downloads", "storage", "tabs", "webRequest"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": {

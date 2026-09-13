@@ -15,6 +15,11 @@
       <button id="refresh" class="text-button" type="button">Refresh</button>
     </header>
 
+    <button id="open-downloads" class="downloads-entry" type="button">
+      <span>Downloads <span id="download-count"></span></span>
+      <span class="downloads-arrow" aria-hidden="true"></span>
+    </button>
+
     <main>
       <p id="status" class="status" aria-live="polite">Looking for HLS traffic on this tab…</p>
       <section id="links" class="stream-list" aria-label="Detected streams"></section>
@@ -23,7 +28,7 @@
 
     <footer>
       <span>Small streams. Happier internet.</span>
-      <span>Downs 2.1</span>
+      <span>Downs 2.2</span>
     </footer>
 
     <script src="download-core.js"></script>
