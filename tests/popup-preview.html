@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Downs popup preview</title>
+    <link rel="stylesheet" href="../extension/popup.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>Downs</h1>
+        <p>HLS detector &amp; playlist inspector</p>
+      </div>
+      <button id="refresh" class="text-button" type="button">Refresh</button>
+    </header>
+
+    <main>
+      <p id="status" class="status" aria-live="polite">Looking for HLS traffic on this tab…</p>
+      <section id="links" class="stream-list" aria-label="Detected streams"></section>
+      <section id="inspector" class="inspector" aria-label="Playlist inspector" hidden></section>
+    </main>
+
+    <footer>
+      <span>Small streams. Happier internet.</span>
+      <span>Downs 2.0</span>
+    </footer>
+
+    <script>
+      const masterUrl = "https://cdn.example.com/live/master.m3u8";
+      const mediaUrl = "https://cdn.example.com/live/video/1080.m3u8";
+      const now = Date.now();
+
+      globalThis.chrome = {
+        runtime: {
+          async sendMessage(message) {
+            if (message.type === "get-links") {
+              return {
+                ok: true,
+                links: [
+                  {
+                    url: masterUrl,
+                    foundAt: now - 25_000,
+                    lastSeenAt: now - 25_000,
+                    requestContext: { hasCookie: true, hasAuthorization: false }
+                  },
+                  {
+                    url: "https://video.example.net/hls/alternate-index.m3u8?token=preview",
+                    foundAt: now - 190_000,
+                    lastSeenAt: now - 190_000,
+                    requestContext: { hasCookie: false, hasAuthorization: false }
+                  }
+                ]
+              };
+            }
+
+            if (message.type === "inspect-playlist" && message.url === mediaUrl) {
+              return {
+                ok: true,
+                fetch: { status: 200, finalUrl: mediaUrl, contentType: "application/vnd.apple.mpegurl" },
+                playlist: {
+                  kind: "media",
+                  vod: true,
+                  live: false,
+                  segmented: "ts",
+                  encrypted: false,
+                  drm: false,
+                  mapUrl: "",
+                  variants: [],
+                  audioRenditions: [],
+                  warnings: []
+                }
+              };
+            }
+
+            return {
+              ok: true,
+              fetch: { status: 200, finalUrl: masterUrl, contentType: "application/vnd.apple.mpegurl" },
+              playlist: {
+                kind: "master",
+                vod: null,
+                live: null,
+                segmented: "unknown",
+                encrypted: false,
+                drm: false,
+                mapUrl: "",
+                variants: [
+                  {
+                    url: mediaUrl,
+                    bandwidth: 5_800_000,
+                    averageBandwidth: 5_100_000,
+                    resolution: "1920x1080",
+                    codecs: "avc1.640028,mp4a.40.2"
+                  },
+                  {
+                    url: "https://cdn.example.com/live/video/720.m3u8",
+                    bandwidth: 3_100_000,
+                    resolution: "1280x720",
+                    codecs: "avc1.64001f,mp4a.40.2"
+                  },
+                  {
+                    url: "https://cdn.example.com/live/video/480.m3u8",
+                    bandwidth: 1_400_000,
+                    resolution: "854x480",
+                    codecs: "avc1.4d401e,mp4a.40.2"
+                  }
+                ],
+                audioRenditions: [
+                  { name: "Japanese", language: "ja", channels: "2", url: "https://cdn.example.com/live/audio/ja.m3u8" }
+                ],
+                warnings: []
+              }
+            };
+          }
+        }
+      };
+    </script>
+    <script src="../extension/popup.js"></script>
+  </body>
+</html>

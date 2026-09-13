@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Downs HLS detection fixture</title>
+  </head>
+  <body>
+    <h1>Downs HLS detection fixture</h1>
+    <p id="result">Requesting playlist…</p>
+    <script>
+      fetch("master.m3u8?fixture=browser")
+        .then((response) => response.text())
+        .then((text) => {
+          document.getElementById("result").textContent = text.startsWith("#EXTM3U")
+            ? "Playlist requested"
+            : "Unexpected response";
+        })
+        .catch((error) => {
+          document.getElementById("result").textContent = error.message;
+        });
+    </script>
+  </body>
+</html>

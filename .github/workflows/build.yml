@@ -1,55 +1,50 @@
-name: Build Executables
+name: Verify and package extension
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch: # Allows manual run from Web UI
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [windows-latest, macos-latest]
-
+  verify:
+    runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Check out repository
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.9'
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
 
-    - name: Install dependencies
-      run: |
-        pip install pyinstaller
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
 
-    - name: Build with PyInstaller (Windows)
-      if: matrix.os == 'windows-latest'
-      run: pyinstaller --noconsole --onefile --name "Downs-Win" downs.py
+      - name: Test playlist parser
+        run: node --test tests/*.test.js
 
-    - name: Build with PyInstaller (macOS)
-      if: matrix.os == 'macos-latest'
-      run: pyinstaller --noconsole --onefile --name "Downs-Mac-Binary" downs.py
+      - name: Check extension source
+        run: |
+          node --check extension/hls-parser.js
+          node --check extension/background.js
+          node --check extension/popup.js
+          node tools/validate-extension.mjs
 
-    # This part makes files available on MANUAL runs (found at bottom of Actions page)
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: downs-binaries-${{ matrix.os }}
-        path: |
-          dist/Downs-Win.exe
-          dist/Downs-Mac-Binary
+      - name: Package Chromium and Firefox builds
+        run: python3 tools/package_extensions.py
 
-    # This part creates the official GitHub Release (only for TAGS)
-    - name: Upload Release Assets
-      uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/')
-      with:
-        files: |
-          dist/Downs-Win.exe
-          dist/Downs-Mac-Binary
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify archives
+        run: |
+          unzip -t dist/downs-chromium.zip
+          unzip -t dist/downs-firefox.zip
+
+      - name: Upload extension packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: downs-extension-packages
+          path: dist/*.zip
