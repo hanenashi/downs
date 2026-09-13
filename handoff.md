@@ -1,1051 +1,760 @@
-# Downs 2.0 handoff — extension-only HLS downloader
+# Downs handoff — download manager polish pass
 
 ## Mission
 
-Preserve the current Python/Tkinter + FFmpeg version of Downs exactly as a known-good legacy version, tag it, then rebuild `main` around a browser-extension-first architecture.
+Downs 2.x is now working end-to-end on real sites in desktop Chrome and Kiwi Android for the currently supported DIRECT path.
 
-The new direction is:
+The next pass is not about expanding HLS format support. It is about making the download experience feel like Downs instead of dropping the user into Kiwi's own download page at the end.
 
-- one extension, no Python runtime required
-- no localhost helper/server
-- no external FFmpeg binary requirement for the normal path
-- Chrome/Chromium desktop first
-- Kiwi Android as a first-class compatibility target from day one
-- Firefox can follow with an alternate manifest/API shim
-- detect HLS in the authenticated browser session, inspect it, fetch it from extension context, mux/remux in JS, and hand the finished file to the browser download system
-- do not attempt DRM bypass
-- do not proxy arbitrary sites
-- fail loudly and explain why
+The goal is a small, persistent **Downs Downloads** manager that owns job state, progress, history, cleanup, and final export.
 
-The current Python app is still useful and should be preserved, not rewritten in place without a checkpoint.
+Keep it simple. No cathedral.
 
 ---
 
-## Step 0 — preserve the existing app before touching `main`
+## Current state
 
-Before any architectural rewrite:
+The current `main` already has:
 
-1. Confirm the current working tree / default branch is clean.
-2. Create an annotated tag for the existing Python/Tkinter + FFmpeg implementation. Suggested tag:
+- extension-only architecture;
+- no Python helper;
+- no localhost bridge;
+- no external FFmpeg for the normal path;
+- HLS detection in the authenticated browser session;
+- playlist inspection / classification;
+- master/media handling;
+- variant inspection;
+- conservative support gating;
+- dedicated long-lived processing page;
+- MPEG-TS VOD direct download for the currently supported subset;
+- bounded segment concurrency;
+- JS remux to MP4 via bundled mux.js;
+- progress reporting;
+- cancellation;
+- OPFS/private-storage output when available;
+- bounded in-memory fallback;
+- browser Downloads API handoff;
+- Chrome + Kiwi compatibility tested manually on real sites.
 
-   `v1-python`
-
-   Suggested annotation:
-
-   `Last Python/Tkinter + FFmpeg desktop version before extension-only rewrite`
-
-3. Push the tag.
-4. Do not delete the existing history. The old implementation must remain recoverable from the tag.
-5. Then rewrite `main` for the new extension-only architecture.
-
-If useful, add a short note to the new README pointing users to the `v1-python` tag for the old desktop app.
+Do not rewrite the working networking/remux core unless the manager genuinely requires it.
 
 ---
 
-## Why this rewrite
-
-The existing architecture already has a browser extension that sees HLS traffic, but it throws away most of the useful browser context and sends only the M3U8 URL to a localhost Python app.
+## Observed UX problem
 
 Current rough flow:
 
 ```text
-website/player
-    ↓
-Downs Link Sucker extension sees .m3u8
-    ↓
-POST URL only → http://127.0.0.1:8765/download
-    ↓
-Python/Tkinter
-    ↓
-FFmpeg performs a cold request
+popup
+  ↓
+choose stream / variant
+  ↓
+processing page
+  ↓
+download + remux
+  ↓
+browser Downloads API
+  ↓
+Kiwi/native downloads page / "open in" flow
 ```
 
-That cold FFmpeg request fails on many more defensive HLS setups because it may not reproduce the browser's successful request environment:
+The native save works, but it becomes the main user experience right at the end.
 
-- Referer / Origin expectations
-- authentication cookies
-- signed or short-lived URLs
-- tokenized child playlists
-- split video/audio renditions
-- AES-128 key requests
-- master playlists where an explicit rendition should be chosen
-- CMAF/fMP4 playlists
-- live playlists without `#EXT-X-ENDLIST`
+Desired flow:
 
-The extension is already sitting inside the environment where the stream works. The rewrite should exploit that instead of trying to make FFmpeg imitate the browser after the fact.
+```text
+popup
+  ↓
+start job
+  ↓
+Downs Downloads
+  ↓
+progress / state / errors
+  ↓
+Done in Downs
+  ↓
+user taps Save to device when desired
+```
+
+Browser-native downloads should become the **final export step**, not the download manager.
 
 ---
 
-## Architectural decision
+## Target UI
 
-Target architecture:
+Example:
 
 ```text
-              authenticated website tab
-                       │
-                       │ HLS network traffic
-                       ▼
-┌─────────────────────────────────────────────┐
-│ Downs browser extension                     │
-│                                             │
-│ 1. detect HLS traffic                       │
-│ 2. associate requests with source tab/page  │
-│ 3. inspect / classify playlists             │
-│ 4. show variants / audio renditions         │
-│ 5. fetch playlist + segments                │
-│ 6. mux/remux in JS                          │
-│ 7. hand finished file to browser downloads  │
-└─────────────────────────────────────────────┘
+Downs Downloads
+
+↓ nature-documentary.mp4
+  63% · 812 / 1280 segments
+  6.2 MB/s
+  [Cancel]
+
+✓ cat-video.mp4
+  Done · 428 MB
+  [Save to device] [Delete]
+
+! weird-stream.mp4
+  Failed: segment 418 returned 403
+  [Retry] [Details] [Delete]
 ```
 
-No localhost HTTP bridge in the new normal path.
-
-No Python dependency.
-
-No external FFmpeg dependency for the normal path.
-
-Do **not** make a separate userscript a required part of installation.
-
-If page-context instrumentation is later needed for MSE/SourceBuffer work, the extension itself should inject a helper script into the page. The user should still install only one extension.
+Keep the existing Downs visual language: compact, readable, touch-friendly.
 
 ---
 
-## Extension-only vs ordinary website JS
+## Ownership model
 
-Do not move the core implementation to GitHub Pages or an ordinary website and expect it to behave like the extension.
+Downs should own:
 
-A normal page inherits ordinary browser restrictions:
+```text
+queued jobs
+active jobs
+progress
+success/failure state
+finished-file presence
+cleanup
+retry
+small recent history
+```
 
-- CORS
-- forbidden header manipulation
-- inability to observe arbitrary requests from another origin/tab
-- inability to inherit another site's authenticated request environment
-
-The extension is the privileged transport and detector.
-
-A GitHub-hosted page may still be useful later for documentation, fixtures, demos, release notes, or a non-privileged HLS inspector, but it must not become the required core downloader.
+The browser-native download system should only be invoked when the user explicitly chooses to export a finished file.
 
 ---
 
-## One extension, not extension + userscript
+## Strong preference: retain finished media before export
 
-The install target should be:
+Where OPFS/private extension storage works, prefer:
 
 ```text
-Downs extension
-├─ background / service worker
-│  └─ detect and coordinate HLS jobs
-├─ popup or extension page
-│  └─ list streams, variants, status, actions
-├─ long-lived processing context
-│  └─ playlist fetching, segment fetching, mux/remux
-├─ optional injected page helper
-│  └─ only later, for player/MSE observation if needed
-└─ downloads integration
-   └─ save completed file
+segments
+  ↓
+remux
+  ↓
+finished MP4 in private extension storage
+  ↓
+job becomes DONE
+  ↓
+[Save to device]
 ```
 
-Users should not need Tampermonkey, Violentmonkey, Greasemonkey, or any external userscript manager.
+Do not automatically trigger the browser's download UI immediately after every successful remux if the completed file can safely remain in private storage.
+
+The user should be able to download/remux first and export later.
+
+If a browser/platform cannot retain the completed file safely, fall back gracefully and explain the limitation.
 
 ---
 
-## Browser targets
+## Manager entry point
 
-Primary targets for the first working pass:
+Add an obvious **Downloads** button/link in the toolbar popup.
 
-```text
-Chrome desktop      required
-Chromium desktop    expected from same build
-Edge / Brave        likely from same Chromium build
-Kiwi Android        required compatibility target
-```
-
-Later:
-
-```text
-Firefox desktop     alternate manifest / API shim
-Firefox Android     possible later
-```
-
-Keep code shared wherever possible.
-
-Possible layout:
-
-```text
-extension/
-  manifest.json
-  manifest.kiwi.json        # only if Kiwi really needs differences
-  manifest.firefox.json     # later
-  src/
-    background.js
-    popup.js
-    inspector.js
-    hls-parser.js
-    downloader.js
-    mux/
-```
-
-Do not create separate codebases for desktop and Kiwi unless testing proves unavoidable.
-
----
-
-## Important MV3 lifetime constraint
-
-Do not trust the Manifest V3 service worker to own a two-hour download.
-
-Treat it as detector/coordinator, not the long-lived media processor.
-
-Suggested split:
-
-```text
-service worker
-    detection
-    request metadata
-    tab association
-    message routing
-        │
-        ▼
-extension page / offscreen document / suitable long-lived extension context
-    playlist parser
-    segment downloader
-    mux/remux
-    progress
-    cancellation
-        │
-        ▼
-Downloads API / final Blob / filesystem path supported by browser
-```
-
-Research the best Chrome + Kiwi compatible long-lived context before choosing the exact implementation.
-
-Do not store whole movies in `storage.session`.
-
-Use IndexedDB or streaming/chunked processing where appropriate.
-
-Avoid holding an entire multi-gigabyte video in RAM.
-
----
-
-# HLS save lab — technical TLDR
-
-## Two broad strategies
-
-### DIRECT / PARSE mode — build this first
-
-```text
-playlist → classify → variants → segments → mux/remux → file
-```
-
-Needs:
-
-- a real playlist URL
-- reachable playlists / segments
-- relevant authenticated browser context
-- no DRM
-- supported encryption/container layout
-
-Can fail on:
-
-- expired signed URLs
-- site-specific request provenance rules
-- inaccessible AES key requests
-- unusual/nonstandard player behavior
-- unsupported muxing/container details
-
-### CAPTURE mode — later fallback
-
-```text
-working player → capture rendered media → encode → file
-```
-
-This is `video.captureStream()` + `MediaRecorder` territory.
-
-It is **not** lossless stream extraction.
-
-It usually re-encodes into a MediaRecorder-supported format such as WebM.
-
-Needs:
-
-- a player that works in the source document
-- tab/player to remain alive
-- supported capture APIs
-
-Can fail on:
-
-- DRM / protected media
-- browser/API limitations
-- player lifecycle
-
-### DUMP mode — later experimental path
-
-```text
-MediaSource / SourceBuffer appendBuffer → preserve incoming fragments → reconstruct/remux
-```
-
-This is closer to lossless extraction than MediaRecorder and may preserve original AVC/AAC/fMP4 fragments, but it is substantially harder.
-
-Do not build this in v1.
-
-If it is ever needed, ship the page-context hook from the extension itself.
-
----
-
-## Terminology to use in the UI/code
-
-Prefer these names:
-
-```text
-DIRECT   authenticated HLS fetch + JS mux/remux
-CAPTURE  rendered stream via MediaRecorder; may re-encode
-DUMP     SourceBuffer fragment interception; experimental/later
-```
-
-Avoid calling both MediaRecorder capture and SourceBuffer interception simply "record mode"; they are technically very different.
-
----
-
-# Playlist anatomy
-
-Basic HLS structure:
-
-```text
-#EXTM3U
-#EXT-X-VERSION:n
-#EXT-X-INDEPENDENT-SEGMENTS          ; optional
-```
-
-## Master playlist
-
-Contains pointers/renditions rather than media segments:
-
-```text
-#EXT-X-STREAM-INF:BANDWIDTH=...,RESOLUTION=1920x1080,CODECS="avc1.640028,mp4a.40.2"
-variant-1080.m3u8
-
-#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aac",URI="audio.m3u8"
-#EXT-X-MEDIA:TYPE=SUBTITLES,URI="subs.m3u8"
-```
-
-If `#EXT-X-STREAM-INF` exists, classify as MASTER.
-
-Do not simply assume the master itself is the final media playlist.
-
-Resolve child URIs relative to the parent playlist URL.
-
-## Media playlist
-
-Typical media tags:
-
-```text
-#EXT-X-TARGETDURATION:n
-#EXT-X-PLAYLIST-TYPE:VOD|EVENT
-#EXT-X-MAP:URI="init.mp4"
-#EXTINF:6.006,
-seg0.ts
-#EXT-X-KEY:METHOD=AES-128,URI="key.bin"
-#EXT-X-ENDLIST
-```
-
-No `#EXT-X-ENDLIST` usually means live/event-like behavior and the job needs a user-selected stop/cap/cancel strategy.
-
----
-
-## Segment/container types
-
-### MPEG-TS
-
-```text
-.ts
-```
-
-Often multiplexed audio + video in the same segments.
-
-Classic remux path.
-
-AAC may need the equivalent of `aac_adtstoasc` when moving ADTS AAC from TS into MP4.
-
-### fMP4 / CMAF
-
-```text
-#EXT-X-MAP:URI="init.mp4"
-segment001.m4s
-segment002.m4s
-```
-
-Needs init segment handling.
-
-Do not apply TS-specific AAC handling blindly.
-
-### split audio/video
-
-Master may point to:
-
-```text
-video-1080.m3u8
-+
-audio-en.m3u8
-```
-
-DIRECT mode must fetch and mux both tracks.
-
-Do not produce a silent video because only the video rendition was selected.
-
----
-
-# Classification model
-
-Suggested internal model:
-
-```text
-Playlist {
-  url
-  kind: 'master' | 'media' | 'not-hls'
-  vod: boolean
-  encrypted: boolean
-  encryptionMethod?: string
-  segmented: 'ts' | 'fmp4' | 'mixed' | 'unknown'
-  mapUrl?: string
-  variants: {
-    bandwidth?: number
-    resolution?: string
-    codecs?: string
-    url: string
-    audioGroup?: string
-  }[]
-  audioRends: {
-    groupId?: string
-    name?: string
-    url: string
-    language?: string
-  }[]
-  segments: {
-    duration?: number
-    url: string
-  }[]
-  targetDuration?: number
-}
-```
-
-Suggested job model:
-
-```text
-Job {
-  mode: 'direct' | 'capture' | 'dump'
-  sourceTabId
-  pageUrl
-  playlistUrl
-  variantUrl?
-  audioUrl?
-  requestContext?
-  liveCapSeconds?
-  filename?
-  state
-  progress
-}
-```
-
-Do not over-engineer the first implementation, but keep these distinctions explicit.
-
----
-
-# Detection
-
-The existing extension already detects `.m3u8` URLs and HLS content types via `webRequest.onHeadersReceived`.
-
-Keep that idea, but evolve it.
-
-For every detected HLS request, associate at least:
-
-```text
-url
-source tab id
-page/document/initiator URL when available
-timestamp
-response content type
-```
-
-Where browser APIs allow, capture useful request metadata from the actual successful request via `onBeforeSendHeaders` / related events and correlate it with the response.
-
-Potentially relevant request context:
-
-```text
-Referer
-Origin
-User-Agent
-Cookie / auth-related context when legitimately available through extension APIs
-```
-
-Do not assume every sensitive header will always be directly readable or replayable.
-
-Do not build brittle logic around manually stealing cookie strings if browser-managed authenticated fetches already work.
-
-Preferred rule:
-
-**stay inside the authenticated browser transport whenever possible instead of reconstructing authentication manually.**
-
----
-
-# DIRECT mode workflow
-
-First useful implementation should roughly do this:
-
-```text
-1. detect HLS request
-2. user opens Downs popup
-3. show detected streams for active tab
-4. user picks one
-5. extension fetches playlist from privileged extension context
-6. verify body begins with #EXTM3U
-7. classify master/media
-8. if master:
-      parse variants
-      parse audio groups
-      present rendition choices
-9. fetch chosen media playlist(s)
-10. classify TS/fMP4, live/VOD, encryption
-11. download segments with bounded concurrency
-12. mux/remux in JS
-13. save finished file through browser
-14. show useful errors, not generic "failed"
-```
-
-Bound segment concurrency. Start around 4–6 and make it easy to tune.
-
-Do not fire hundreds of simultaneous requests.
-
----
-
-# First-pass UI
-
-Keep the spirit of Downs: small, obvious, no cathedral.
-
-Example popup:
+Example:
 
 ```text
 Downs
 
-Detected on this tab
+Detected streams...
 
-1080p   AVC / AAC   5.8 Mbps
-720p    AVC / AAC   3.1 Mbps
-480p    AVC / AAC   1.4 Mbps
-
-✓ VOD
-✓ media reachable
-✓ muxed A/V
-✓ MPEG-TS
-
-[ Download 1080p ]
+[ Downloads (2) ]
 ```
 
-For a split/fMP4 stream:
+The number may represent active jobs or active + finished-unexported jobs.
 
-```text
-1080p AVC
-Audio: Japanese AAC
-Container: fMP4/CMAF
-Video + audio: separate
-
-[ Download ]
-```
-
-For failures:
-
-```text
-Could not start DIRECT download
-
-Playlist: reachable
-Variant: reachable
-Media: AES-128 encrypted
-Key: request denied
-
-Reason: key could not be fetched in extension context.
-```
-
-Make the extension useful for diagnosis even when downloading fails.
+Do not repurpose the toolbar badge if it is already useful for detected-stream counts. Prefer showing download count inside the popup.
 
 ---
 
-# Fail loudly / inspector expectations
+## Job states
 
-At minimum detect and report:
+Keep the visible state model small:
 
 ```text
-HTML returned instead of playlist
-not HLS / body does not start #EXTM3U
-master vs media
-VOD vs live
-TS vs fMP4/CMAF
-EXT-X-MAP present
-EXT-X-KEY present
-encryption method
-split audio/video
-number of variants
-variant resolution / bandwidth / codecs when known
-expired/403 playlist
-segment failure
-key failure
-unsupported DRM/protection
-unsupported muxing case
+queued
+downloading
+remuxing
+done
+failed
+cancelled
 ```
 
-Do not display a meaningless generic FFmpeg-like "download error" if the actual reason can be classified.
+Do not implement pause/resume in this pass.
+
+Use clean cancel + retry-from-scratch instead.
 
 ---
 
-# Encryption / DRM boundary
+## Persistent job metadata
 
-Important distinction:
-
-### Ordinary HLS AES-128
-
-If the playlist exposes:
+Suggested model:
 
 ```text
-#EXT-X-KEY:METHOD=AES-128,URI="..."
+Job {
+  id
+  createdAt
+  updatedAt
+
+  sourcePageTitle?
+  sourcePageUrl?
+  playlistUrl
+  variantLabel?
+
+  filename
+
+  state
+
+  segmentCount?
+  completedSegments?
+  bytesDownloaded?
+  totalBytes?
+  speedBytesPerSecond?
+
+  outputStorage?: 'opfs' | 'memory' | 'exported'
+  outputPathOrKey?
+  outputSize?
+
+  error?: {
+    code?
+    message
+    segmentIndex?
+    httpStatus?
+  }
+}
 ```
 
-and the authenticated extension can legitimately fetch the key with the same browser session/context, support may be possible later or in DIRECT mode.
+Rules:
 
-### DRM / protected media
-
-Examples include SAMPLE-AES used with DRM systems, EME/Widevine-style protected playback, FairPlay, or anything requiring license circumvention.
-
-Do **not** bypass DRM.
-
-If protected media is detected or strongly indicated:
-
-```text
-DRM / protected media — unsupported
-```
-
-Stop cleanly.
-
-Do not attempt license extraction, CDM manipulation, key theft, or DRM circumvention.
+- never put media bytes in `chrome.storage`;
+- keep media in OPFS/private file storage where possible;
+- keep job metadata in extension storage or IndexedDB;
+- metadata should survive popup close/reopen;
+- finished job metadata should survive manager close/reopen;
+- if practical, keep finished jobs across browser restart while the private output still exists.
 
 ---
 
-# Mux/remux strategy
+## Long-running processing
 
-This is the biggest technical cost of dropping desktop FFmpeg.
+Preserve the existing good decision: do not make the MV3 service worker own a long download.
 
-Do not immediately embed ffmpeg.wasm unless a real unsupported case requires it.
-
-Reasons:
-
-- large WASM payload
-- high memory usage
-- startup cost
-- mobile pain
-- poor fit for multi-GB media
-
-Prefer focused JS tooling.
-
-Conceptual strategy:
+Suggested responsibilities:
 
 ```text
-HLS parser
-   │
-   ├── muxed MPEG-TS A/V
-   │      └─ JS demux/remux → MP4
-   │
-   ├── fMP4/CMAF
-   │      └─ init + media fragment handling → final MP4
-   │
-   ├── split A/V
-   │      └─ fetch both → mux tracks → MP4
-   │
-   └── unsupported/weird
-          └─ fail clearly; consider WASM fallback later
+background/service worker
+  detection
+  routing
+  job metadata coordination
+
+Downloads manager page
+  displays jobs
+  receives state updates
+  exposes actions
+
+processing page/context
+  playlist refresh
+  segment fetch
+  remux
+  output writing
 ```
 
-Evaluate libraries such as mux.js and current lightweight MP4 muxers, but do not blindly add dependencies. Check license, maintenance, browser compatibility, bundle size, memory behavior, and Kiwi behavior.
+Do not move multi-hour media processing into the service worker just to simplify UI wiring.
 
-Do not transcode when remuxing is sufficient.
+If the current processing page must remain open, make it feel like part of the manager rather than a disposable random tab.
 
-The point of DIRECT mode is to preserve original stream quality whenever possible.
+If one manager page can safely own multiple jobs on both Chrome and Kiwi, that may be worth considering — but only after verifying lifetime and memory behavior.
 
 ---
 
-# Memory / large file handling
+## Active job UI
 
-Design for large media early.
+Show at minimum:
+
+```text
+filename
+state
+percent when calculable
+segments completed / total
+bytes downloaded when known
+speed when reliable
+Cancel
+```
+
+Example:
+
+```text
+nature-doc.mp4
+Downloading · 63%
+812 / 1280 segments · 6.2 MB/s
+[Cancel]
+```
+
+ETA is optional. Do not fake precision.
+
+---
+
+## Remuxing state
+
+Show remuxing separately:
+
+```text
+nature-doc.mp4
+Remuxing…
+```
+
+Do not leave the UI at `100% Downloading` while CPU work continues.
+
+---
+
+## Done state
+
+Prefer:
+
+```text
+cat-video.mp4
+Done · 428 MB
+[Save to device] [Delete]
+```
+
+After export:
+
+```text
+cat-video.mp4
+Saved · 428 MB
+[Save again] [Delete]
+```
+
+Keep the private copy until the user deletes it, subject to reasonable storage limits.
+
+---
+
+## Failed state
+
+Preserve specific diagnostics.
+
+Example:
+
+```text
+weird-stream.mp4
+Failed
+Segment 418 returned HTTP 403
+[Retry] [Details] [Delete]
+```
+
+Do not collapse useful existing errors into a generic `Download failed`.
+
+---
+
+## Retry behavior
+
+Implement **retry from scratch**.
+
+Retry should:
+
+1. clean previous partial output;
+2. re-fetch / re-inspect the media playlist;
+3. re-run support validation;
+4. obtain fresh current segment URLs;
+5. start again.
+
+Do not reuse stale stored segment lists from the failed attempt.
+
+This is important for time-limited or changing playlist URLs.
+
+---
+
+## Cancel behavior
+
+On cancel:
+
+- abort outstanding fetches;
+- stop remux processing;
+- close writers/streams;
+- remove partial private output;
+- update job state cleanly.
+
+A cancelled job may remain briefly with Retry/Delete or disappear after cleanup. Choose whichever keeps the manager simpler.
+
+---
+
+## Delete behavior
+
+Delete should remove:
+
+```text
+job metadata
+finished private output
+partial/temp output
+```
+
+Do not leave orphaned private media indefinitely.
+
+---
+
+## Bounded history
+
+Do not let metadata grow forever.
+
+A simple bounded history is enough, e.g.:
+
+```text
+latest 20–50 jobs
+```
+
+or age-based cleanup for older exported entries.
+
+No database museum.
+
+---
+
+## Save to device
+
+The native browser handoff should become an explicit action:
+
+```text
+[Save to device]
+```
+
+When pressed:
+
+1. read/expose the completed private MP4;
+2. pass it to the browser Downloads API or best supported mechanism;
+3. keep the private copy until export succeeds or user deletes it;
+4. mark the job as saved/exported when appropriate.
+
+On Kiwi verify:
+
+- filename handling;
+- OPFS/private-file export;
+- Blob/Object URL behavior if used;
+- Android/Kiwi native download UI;
+- `Save again` behavior.
+
+It is acceptable for Kiwi's native UI to appear **after the user taps Save to device**.
+
+The goal is only to stop that native UI from being the main Downs job-management experience.
+
+---
+
+## Open / Share
+
+Not a blocker.
+
+Priority:
+
+```text
+1. Save to device
+2. Save again
+3. Delete
+4. Retry / Details
+5. Open/Share only if easy and reliable
+```
+
+Do not add a native companion app just for Open/Share.
+
+---
+
+## Pause / resume — not this pass
+
+Do not implement pause/resume now.
+
+Reasons include changing or expiring playlist/segment URLs and extra state complexity.
+
+For this pass:
+
+```text
+Cancel
+Retry from scratch
+```
+
+is enough.
+
+---
+
+## Keep current format support conservative
+
+Do not combine this manager pass with a major expansion of HLS support.
+
+Preserve current clear support gating and failure messages.
+
+The manager should become excellent for the currently working DIRECT path before broadening format support.
+
+---
+
+## Kiwi status
+
+Manual user report:
+
+- extension loaded successfully in Kiwi;
+- tested on two different real sites;
+- core detection/download path worked nicely;
+- main rough edge was the download-management / native download-page experience.
+
+Treat this as strong evidence that the architecture is viable on Kiwi.
+
+Do not casually refactor away working Kiwi behavior.
+
+Every major manager change should be manually checked on:
+
+```text
+Chrome desktop
+Kiwi Android
+```
+
+Especially verify:
+
+- phone-width manager layout;
+- touch-friendly controls;
+- active job continues when popup closes;
+- manager state persists when reopened;
+- scrolling/history works;
+- final export works;
+- cancel cleans partial data;
+- closing manager/processing tabs has clear behavior;
+- browser restart behavior is sane.
+
+---
+
+## Suggested implementation order
+
+### C1 — persistent manager shell
+
+1. Add Downloads entry in popup.
+2. Create/rework manager page.
+3. Persist job metadata.
+4. Show active / done / failed jobs.
+5. Keep existing processing mechanics mostly unchanged.
+
+Success criterion:
+
+> Start a job, close popup, open Downloads, and still see correct state/progress.
+
+### C2 — retain finished output
+
+1. Stop automatic export where private storage allows retention.
+2. Mark job `done`.
+3. Show output size.
+4. Add `Save to device`.
+5. Add `Delete`.
+6. Add `Save again`.
+
+Success criterion:
+
+> Finished MP4 remains safely in Downs until the user explicitly exports it.
+
+### C3 — retry / failure polish
+
+1. Persist detailed error state.
+2. Add Retry from scratch.
+3. Re-inspect playlist before retry.
+4. Clean partial files reliably.
+5. Add minimal Details view if useful.
+
+Success criterion:
+
+> Failed jobs are understandable and retry with fresh playlist data.
+
+### C4 — history / mobile polish
+
+1. Bounded history.
+2. Reliable cleanup.
+3. Phone-width layout.
+4. Touch-friendly controls.
+5. Manual Chrome + Kiwi verification.
+
+---
+
+## Testing
+
+Keep all existing parser/downloader tests.
+
+Add unit tests where practical for:
+
+```text
+job-state transitions
+retry resets stale fields
+history pruning
+cleanup bookkeeping
+error persistence
+filename/output metadata
+```
+
+Do not pretend Node tests prove browser storage/download behavior. Manual browser QA remains required.
+
+### Main manual path
+
+Use the known supported Mux MPEG-TS VOD fixture:
+
+`https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8`
+
+Test:
+
+```text
+detect
+inspect
+choose supported media playlist
+start download
+manager shows progress
+remux
+job becomes Done
+Save to device
+verify audio + video
+Save again
+Delete
+```
+
+### Cancel test
+
+```text
+start longer job
+wait for several segments
+Cancel
+verify fetches stop
+verify partial output is removed
+verify manager state is sane
+```
+
+### Failure test
+
+Use fixture/mocking to force one segment to fail:
+
+```text
+job → Failed
+exact reason visible
+Retry re-inspects playlist
+```
+
+### Kiwi test
+
+Verify on physical Kiwi:
+
+```text
+Downloads page
+progress with popup closed
+finished private output
+Save to device
+native final save behavior
+Delete
+Retry
+phone-width layout
+```
+
+---
+
+## Do not overbuild
+
+Good:
+
+```text
+Downloads
+2 active · 3 finished
+
+[compact job rows]
+```
 
 Bad:
 
 ```text
-fetch every segment
-→ keep all ArrayBuffers in one giant JS array
-→ make 8 GB Blob
-→ browser explodes on Android
+accounts
+cloud sync
+categories
+media artwork library
+transcoding presets
+scheduling
+bandwidth dashboards
+15 settings pages
 ```
 
-Prefer:
-
-- bounded fetch queue
-- incremental parsing/remux
-- IndexedDB or another disk-backed staging approach if needed
-- incremental output where browser APIs permit
-- explicit cleanup on cancellation/failure
-
-Chrome desktop may tolerate sloppy memory behavior that Kiwi Android absolutely will not. Kiwi is therefore useful as an architectural stress test.
+We need a useful job list, not qBittorrent wearing a tiny HLS hat.
 
 ---
 
-# Live streams
-
-No `#EXT-X-ENDLIST` means the job must not wait forever without a policy.
-
-For first pass:
-
-- detect live
-- do not pretend it is VOD
-- either mark live as unsupported initially, or require a user-selected capture duration
-- if supporting live, poll playlist updates and stop after `liveCapSeconds` or user cancel
-
-Do not silently create infinite jobs.
-
----
-
-# CAPTURE mode — later
-
-Only after DIRECT mode works.
-
-Possible first fallback:
-
-```javascript
-const stream = video.captureStream();
-const rec = new MediaRecorder(stream, {
-  mimeType: 'video/webm;codecs=vp9,opus'
-});
-```
-
-Important UI truthfulness:
+# Beechan / Codex CLI prompt
 
 ```text
-Fallback capture
-Real-time or near-real-time
-May re-encode
-Not guaranteed to preserve original stream codecs/quality
+Read the whole repository first, especially README.md, handoff.md, the current extension downloader/processing code, storage/output handling, popup, tests, and packaging scripts.
+
+Current situation:
+
+Downs 2.x is working successfully on real HLS sites in desktop Chrome and Kiwi Android for its currently supported DIRECT MPEG-TS VOD path. The user manually tested Kiwi on two different sites and reports that the core flow works nicely.
+
+The next task is download-manager polish, not new format support.
+
+The main UX problem is that after a successful job Kiwi's own download/native page becomes the main experience. We want Downs itself to own job state and only invoke browser-native saving when the user explicitly chooses Save to device.
+
+Implement the manager pass described in handoff.md.
+
+Requirements:
+
+- add a persistent Downs Downloads manager page;
+- add an obvious Downloads entry from the toolbar popup;
+- persist job metadata independently of popup lifetime;
+- show queued/downloading/remuxing/done/failed/cancelled states clearly;
+- show useful progress: percent where available, segment counts, bytes, and speed where reliable;
+- preserve existing detailed failure messages;
+- keep long-running processing outside the MV3 service worker;
+- retain completed MP4 output in OPFS/private extension storage where supported;
+- do not automatically export every successful file when private storage can retain it;
+- on completion mark the job Done and offer Save to device;
+- allow Save again while the private copy remains;
+- allow Delete to remove metadata and private output;
+- add simple Retry from scratch for failed/cancelled jobs;
+- Retry must re-fetch/re-inspect the playlist and must not reuse stale stored segment URLs;
+- Cancel must stop work and clean partial output;
+- keep a small bounded history;
+- keep the UI mobile-friendly for Kiwi;
+- preserve existing Chrome behavior and tests;
+- do not broaden format support in this pass;
+- no Python helper, localhost bridge, external FFmpeg, userscript, native companion app, or cloud service;
+- do not implement pause/resume in this pass;
+- do not add Open/Share unless it is straightforward after the core manager is complete.
+
+Important architectural rule:
+
+The MV3 service worker remains a detector/coordinator, not the owner of a long-running media job. Reuse the existing long-lived processing architecture as much as possible. Do not regress working Kiwi behavior just to make desktop architecture prettier.
+
+Suggested staged work:
+
+C1: persistent manager shell + job metadata
+C2: retain finished output + Save to device / Save again / Delete
+C3: failure persistence + Retry from scratch + cleanup
+C4: bounded history + Chrome/Kiwi mobile polish
+
+Before coding, inspect how the current processing page writes to OPFS/private storage and how the Downloads API handoff currently works. Reuse working code instead of rebuilding the downloader.
+
+Add or adjust tests for pure job-state/history/cleanup helpers where practical. Keep manual browser QA documented where tests cannot prove browser behavior.
+
+After implementation:
+
+1. run all existing tests;
+2. run JS syntax/extension validation;
+3. package Chromium/Firefox builds as currently supported;
+4. update README.md for the Downloads manager and Save-to-device flow;
+5. summarize architecture changes and Kiwi-specific caveats;
+6. commit with a clear message.
+
+Keep Downs small. No cathedral.
 ```
-
-Do not label MediaRecorder output as a lossless download.
-
-Fixed rendition / disabled auto-ABR may be useful while capturing.
 
 ---
 
-# DUMP mode — later / experimental
+## Definition of done
 
-Potential page-context injection could intercept:
-
-```javascript
-SourceBuffer.prototype.appendBuffer
-```
-
-and copy incoming init/media fragments before forwarding them to the original method.
-
-Possible goal:
+This pass is done when:
 
 ```text
-player fetches authenticated media normally
-→ Downs observes actual MSE fragments
-→ reconstruct tracks
-→ remux
+1. User starts a supported HLS download.
+2. Downs Downloads shows the active job and useful progress.
+3. Popup can close without losing job visibility/state.
+4. Successful remux becomes Done inside Downs.
+5. Finished MP4 can remain in private Downs storage.
+6. User explicitly taps Save to device for native export.
+7. User can Save again or Delete while the private copy remains.
+8. Failed jobs show a useful reason and can Retry from fresh playlist inspection.
+9. Cancel reliably cleans partial output.
+10. UI works sensibly on Chrome desktop and Kiwi Android.
 ```
 
-This is substantially harder because of:
-
-- SourceBuffer lifecycle
-- separate audio/video buffers
-- discontinuities
-- ABR rendition switches
-- init segment changes
-- timestamp offsets
-- memory pressure
-- page isolation/injection details
-
-Do not build this until DIRECT mode has real-world failures that justify it.
-
----
-
-# Legal/open test fixtures
-
-Use open, safe fixtures while developing.
-
-### VOD muxed TS ABR
-
-```text
-https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8
-```
-
-Start here.
-
-### Apple classic MPEG-TS master
-
-```text
-https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8
-```
-
-### Apple fMP4 + separate audio
-
-```text
-https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8
-```
-
-This is an important test because it catches assumptions that everything is muxed `.ts`.
-
-### Tears of Steel HLS
-
-```text
-https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8
-```
-
-### Live fixture
-
-```text
-https://cph-p2p-msl.akamaized.net/hls/live/2000341/test/master.m3u8
-```
-
-Reference/demo pages:
-
-```text
-https://developer.apple.com/streaming/examples/
-https://hlsjs.video-dev.org/demo
-https://ottverse.com/free-hls-m3u8-test-urls/
-```
-
-Do not use DRM-protected commercial content as a development fixture.
-
----
-
-# Minimum first milestone
-
-The first extension I want to manually load into Chrome and Kiwi does **not** need to finish the entire downloader rewrite.
-
-It should prove the architecture.
-
-## Milestone A — detector + inspector
-
-Required:
-
-1. Load unpacked in Chrome desktop.
-2. Attempt load unpacked in Kiwi Android.
-3. Detect HLS requests in the active tab.
-4. Popup lists detected playlist URLs.
-5. Selecting one fetches/parses the playlist from extension context.
-6. Show:
-   - master/media/not-HLS
-   - VOD/live
-   - variants
-   - resolution
-   - bandwidth
-   - codecs if present
-   - audio groups/renditions
-   - TS/fMP4/unknown
-   - `EXT-X-MAP`
-   - `EXT-X-KEY`
-7. For master playlists, allow selecting a variant and inspect the chosen media playlist.
-8. Clear useful error states for 403/HTML/expired/etc.
-9. No Python or localhost component.
-
-A basic `Download` button may be present only when the first supported path is implemented correctly.
-
-The inspector itself is already a successful first test.
-
----
-
-# Minimum second milestone
-
-## Milestone B — first real DIRECT download
-
-Support the simplest reliable case first:
-
-```text
-VOD
-master or media playlist
-muxed MPEG-TS audio+video
-no DRM
-no unsupported encryption
-```
-
-Flow:
-
-```text
-choose rendition
-→ fetch media playlist
-→ fetch TS segments, bounded concurrency
-→ JS remux
-→ save MP4
-```
-
-Test against the open mux.dev fixture and Apple TS fixture.
-
-Only once this works should fMP4/separate audio be added.
-
----
-
-# Third milestone
-
-## Milestone C — fMP4 + split audio
-
-Add:
-
-- `EXT-X-MAP`
-- CMAF/fMP4 fragments
-- separate audio rendition selection
-- video + audio muxing
-
-Test against the Apple fMP4 fixture.
-
----
-
-# Fourth milestone
-
-## Milestone D — real authenticated-browser cases
-
-Once open fixtures work:
-
-- test the extension on user-authorized, non-DRM real-world HLS pages that previously failed in Python Downs
-- compare the request that the player successfully made with what DIRECT mode fetches
-- improve request-context reuse only as needed
-- document browser-specific restrictions instead of hiding them
-
-Do not implement generic proxying or DRM bypass to make every site appear supported.
-
----
-
-# README rewrite expectations
-
-After tagging the old app and beginning the new main branch architecture, rewrite README around the new product.
-
-Suggested opening:
-
-```text
-# Downs
-
-A small browser extension for detecting and saving HLS streams from the browser session that is already playing them.
-
-No Python helper. No localhost bridge. No external FFmpeg for the normal path.
-```
-
-README should explain:
-
-- current status / experimental label
-- Chrome desktop install instructions
-- Kiwi Android install instructions once confirmed
-- what DIRECT mode means
-- supported HLS forms
-- unsupported cases
-- DRM boundary
-- open test fixtures
-- link to `v1-python` for the old desktop version
-
-Do not claim support that has not been tested.
-
----
-
-# Existing code worth studying/reusing conceptually
-
-The current repo already contains useful pieces:
-
-- HLS detection by URL/content type
-- per-tab detected link storage
-- popup plumbing
-- Chrome + Firefox manifest split
-- simple UI philosophy
-
-Do not mechanically preserve the localhost feed architecture just because it exists.
-
-Reuse the good detection/UI ideas, not the obsolete transport.
-
----
-
-# Non-goals
-
-Do **not** spend the first pass on:
-
-- pretty animations
-- giant framework migrations
-- a GitHub Pages frontend as the core app
-- userscript-manager dependency
-- DRM bypass
-- arbitrary proxy servers
-- ffmpeg.wasm before simpler JS remuxing is evaluated
-- SourceBuffer interception
-- MediaRecorder capture
-- live stream complexity unless trivial
-- Firefox polish before Chrome + Kiwi architecture is proven
-
-Get the architecture working first.
-
----
-
-# Development style
-
-Keep Downs small.
-
-Prefer plain JS/HTML/CSS unless a dependency materially simplifies a hard media problem.
-
-Avoid framework ceremony.
-
-Every external dependency should earn its place.
-
-When uncertain, build a small fixture/test before adding abstraction.
-
-Add lightweight parser tests for representative playlist strings:
-
-```text
-master with variants
-master with split audio
-TS media playlist
-fMP4 media playlist with EXT-X-MAP
-AES-128 playlist
-live playlist
-HTML error body
-relative child URLs
-absolute child URLs
-query-tokenized URLs
-```
-
-The parser/classifier should be testable without launching the browser.
-
----
-
-# Definition of success for the first Beechan session
-
-At the end of the first implementation session I want, ideally:
-
-```text
-✓ old Python Downs tagged/preserved
-✓ main is clearly the new extension project
-✓ README describes the new direction honestly
-✓ no localhost/Python dependency in the new extension path
-✓ Chrome can load the extension unpacked
-✓ Kiwi can at least attempt to load the same extension/build
-✓ popup sees HLS URLs on an open fixture page
-✓ inspector parses master/media playlist structure
-✓ variants are visible/selectable
-✓ useful classification is shown
-✓ obvious errors are readable
-```
-
-If Kiwi exposes an API incompatibility, document it immediately and isolate it behind the smallest possible compatibility layer. Do not fork the entire project.
-
----
-
-# Prompt for Beechan Codex CLI
-
-Use the following as the working prompt after reading this file:
-
-> Read `handoff.md` completely before changing anything. Then inspect the current repository and git history. Preserve the current Python/Tkinter + FFmpeg Downs by creating and pushing an annotated `v1-python` tag before rewriting `main`; do not destroy the old history. After that, begin the extension-only Downs 2.0 rewrite described here. Keep the implementation small and dependency-light. Chrome desktop and Kiwi Android are the first compatibility targets; one extension install only, no required userscript, no Python helper, no localhost HTTP bridge, and no external FFmpeg in the normal new path. First build Milestone A: HLS detection + playlist inspector/classifier with a simple popup, using the legal/open fixtures listed in this document. Parse master/media playlists, variants, split audio metadata, VOD/live, TS/fMP4, EXT-X-MAP, and EXT-X-KEY, resolve relative URLs correctly, and produce useful errors. Use the extension's privileged browser context rather than a GitHub Pages app for core fetching. Treat MV3 service-worker lifetime carefully and do not design long downloads around a service worker staying alive. Do not implement DRM bypass, proxying, SourceBuffer dumping, or MediaRecorder capture in this first pass. Rewrite README for the new architecture and mention the `v1-python` legacy tag. Run any parser/unit checks you can locally and inspect the extension files for Chrome MV3 validity. If Kiwi compatibility cannot be tested directly on Beechan, keep APIs conservative, document anything uncertain, and prepare concise manual load/test steps for Stan. Commit sensible checkpoints. Do not ask Stan questions unless a genuinely blocking decision cannot be inferred from this handoff; make reasonable implementation choices and record them.
-
----
-
-## Final reminder
-
-The core idea is simple:
-
-**The browser extension is already present in the authenticated environment where the HLS stream works. Stop throwing that advantage away.**
-
-Build DIRECT mode there first. Preserve the tiny-goblin spirit.
+If those ten points work, stop and test before expanding format support.
