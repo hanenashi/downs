@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build dependency-free Chromium and Firefox packages for Downs."""
+"""Build self-contained Chromium and Firefox packages for Downs."""
 
 from pathlib import Path
 import json
@@ -13,10 +13,17 @@ BUILD_ROOT = ROOT / "build"
 DIST_DIR = ROOT / "dist"
 FILES = [
     "hls-parser.js",
+    "download-core.js",
+    "download-worker.js",
+    "download.html",
+    "download.css",
+    "download.js",
     "background.js",
     "popup.html",
     "popup.css",
     "popup.js",
+    "vendor/mux-mp4.min.js",
+    "vendor/LICENSE.mux.js",
 ]
 
 
@@ -36,11 +43,13 @@ def build_flavor(name, manifest_name, archive_name):
     )
 
     for filename in FILES:
-        shutil.copy2(EXTENSION_DIR / filename, build_dir / filename)
+        destination = build_dir / filename
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(EXTENSION_DIR / filename, destination)
 
     with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted(build_dir.iterdir()):
-            archive.write(path, path.name)
+        for path in sorted(path for path in build_dir.rglob("*") if path.is_file()):
+            archive.write(path, path.relative_to(build_dir))
 
     print(f"{name.title()} unpacked extension: {build_dir}")
     print(f"{name.title()} extension zip: {archive_path}")

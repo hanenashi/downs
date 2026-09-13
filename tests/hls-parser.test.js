@@ -114,6 +114,28 @@ live-100.ts
   assert.equal(playlist.playlistType, "EVENT");
 });
 
+test("records media features that the first DIRECT path must reject", () => {
+  const playlist = parsePlaylist(`#EXTM3U
+#EXT-X-I-FRAMES-ONLY
+#EXTINF:4,
+#EXT-X-BYTERANGE:1000@0
+media.ts
+#EXT-X-DISCONTINUITY
+#EXT-X-GAP
+#EXTINF:4,
+gap.ts
+#EXT-X-ENDLIST
+`, "https://example.com/ranged/index.m3u8");
+
+  assert.equal(playlist.iframeOnly, true);
+  assert.equal(playlist.hasByteRanges, true);
+  assert.equal(playlist.hasDiscontinuities, true);
+  assert.equal(playlist.hasGaps, true);
+  assert.equal(playlist.segments[0].byteRange, "1000@0");
+  assert.equal(playlist.segments[1].discontinuity, true);
+  assert.equal(playlist.segments[1].gap, true);
+});
+
 test("returns a useful classification for HTML and other non-HLS bodies", () => {
   const html = parsePlaylist("<!doctype html><title>Sign in</title>", "https://example.com/expired");
   assert.equal(html.kind, "not-hls");

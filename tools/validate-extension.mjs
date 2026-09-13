@@ -9,10 +9,17 @@ const extensionDir = path.join(root, "extension");
 const manifests = ["manifest.json", "manifest.firefox.json"];
 const requiredFiles = [
   "background.js",
+  "download-core.js",
+  "download-worker.js",
+  "download.css",
+  "download.html",
+  "download.js",
   "hls-parser.js",
   "popup.css",
   "popup.html",
-  "popup.js"
+  "popup.js",
+  "vendor/LICENSE.mux.js",
+  "vendor/mux-mp4.min.js"
 ];
 
 for (const manifestName of manifests) {
@@ -24,6 +31,7 @@ for (const manifestName of manifests) {
   assert.match(manifest.version, /^\d+(?:\.\d+){0,3}$/, `${manifestName} has an invalid version`);
   assert.ok(manifest.permissions.includes("webRequest"), `${manifestName} needs webRequest`);
   assert.ok(manifest.permissions.includes("storage"), `${manifestName} needs storage`);
+  assert.ok(manifest.permissions.includes("downloads"), `${manifestName} needs downloads`);
   assert.deepEqual(
     manifest.host_permissions,
     ["http://*/*", "https://*/*"],

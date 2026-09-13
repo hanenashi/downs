@@ -31,6 +31,9 @@ jobs:
       - name: Check extension source
         run: |
           node --check extension/hls-parser.js
+          node --check extension/download-core.js
+          node --check extension/download-worker.js
+          node --check extension/download.js
           node --check extension/background.js
           node --check extension/popup.js
           node tools/validate-extension.mjs

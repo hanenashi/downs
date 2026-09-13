@@ -3,16 +3,24 @@ const ext = globalThis.browser || globalThis.chrome;
 if (!globalThis.DownsHls && typeof importScripts === "function") {
   importScripts("hls-parser.js");
 }
+if (!globalThis.DownsDownload && typeof importScripts === "function") {
+  importScripts("download-core.js");
+}
 
 const MAX_LINKS_PER_TAB = 50;
 const MAX_PLAYLIST_BYTES = 5 * 1024 * 1024;
 const PLAYLIST_TIMEOUT_MS = 20_000;
+const DOWNLOAD_JOB_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 const tabQueues = new Map();
 const requestContexts = new Map();
 const storageArea = ext.storage.session || ext.storage.local;
 
 function storageKey(tabId) {
   return `tab:${tabId}`;
+}
+
+function jobStorageKey(id) {
+  return `job:${id}`;
 }
 
 function normalizeUrl(url) {
@@ -257,6 +265,67 @@ async function inspectPlaylist(rawUrl) {
   }
 }
 
+function createJobId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+async function startDownloadJob(message) {
+  const inspection = await inspectPlaylist(message.url);
+  if (!inspection.ok) {
+    return inspection;
+  }
+
+  const eligibility = globalThis.DownsDownload.validateDirectPlaylist(inspection.playlist, {
+    hasSeparateAudio: Boolean(message.hasSeparateAudio)
+  });
+  if (!eligibility.supported) {
+    return {
+      ok: false,
+      error: { code: eligibility.code, message: eligibility.reason }
+    };
+  }
+
+  const [sourceTab] = await ext.tabs.query({ active: true, currentWindow: true });
+  const id = createJobId();
+  const job = {
+    id,
+    createdAt: Date.now(),
+    url: inspection.fetch.finalUrl,
+    filename: globalThis.DownsDownload.suggestFilename(
+      sourceTab?.title || "downs-video",
+      message.variantLabel || ""
+    ),
+    variantLabel: message.variantLabel || "",
+    hasSeparateAudio: Boolean(message.hasSeparateAudio),
+    supportSummary: eligibility.reason
+  };
+
+  await storageArea.set({ [jobStorageKey(id)]: job });
+  await ext.tabs.create({ url: ext.runtime.getURL(`download.html#${encodeURIComponent(id)}`) });
+  return { ok: true, id };
+}
+
+async function getDownloadJob(id) {
+  if (typeof id !== "string" || !/^[a-z0-9-]{8,80}$/i.test(id)) {
+    return { ok: false, error: { code: "job", message: "Invalid download job." } };
+  }
+
+  const key = jobStorageKey(id);
+  const stored = await storageArea.get(key);
+  const job = stored[key];
+  if (!job) {
+    return { ok: false, error: { code: "job", message: "This download job expired." } };
+  }
+  if (Date.now() - job.createdAt > DOWNLOAD_JOB_MAX_AGE_MS) {
+    await storageArea.remove(key);
+    return { ok: false, error: { code: "job", message: "This download job expired." } };
+  }
+  return { ok: true, job };
+}
+
 registerRequestHeaderListener();
 
 ext.webRequest.onHeadersReceived.addListener(
@@ -298,6 +367,22 @@ ext.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
     if (message?.type === "inspect-playlist") {
       sendResponse(await inspectPlaylist(message.url));
+      return;
+    }
+
+    if (message?.type === "start-download") {
+      sendResponse(await startDownloadJob(message));
+      return;
+    }
+
+    if (message?.type === "get-download-job") {
+      sendResponse(await getDownloadJob(message.id));
+      return;
+    }
+
+    if (message?.type === "finish-download-job") {
+      await storageArea.remove(jobStorageKey(message.id));
+      sendResponse({ ok: true });
       return;
     }
 

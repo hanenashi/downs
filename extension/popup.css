@@ -350,6 +350,50 @@ h1 {
   font: 10.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+.download-action {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.download-button {
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 16px;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 3px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.download-button:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.download-button:disabled {
+  color: #d8e7dc;
+  background: #688876;
+  cursor: wait;
+}
+
+.download-label {
+  display: block;
+  color: var(--warning);
+  font-size: 12px;
+}
+
+.download-reason,
+.download-error {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.download-error {
+  color: var(--error);
+}
+
 .loading {
   padding: 22px 0;
   color: var(--muted);

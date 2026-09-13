@@ -26,6 +26,7 @@
       <span>Downs 2.0</span>
     </footer>
 
+    <script src="../extension/download-core.js"></script>
     <script>
       const masterUrl = "https://cdn.example.com/live/master.m3u8";
       const mediaUrl = "https://cdn.example.com/live/video/1080.m3u8";
@@ -68,9 +69,17 @@
                   mapUrl: "",
                   variants: [],
                   audioRenditions: [],
+                  segments: [
+                    { url: "https://cdn.example.com/live/video/segment-001.ts", duration: 6 },
+                    { url: "https://cdn.example.com/live/video/segment-002.ts", duration: 6 }
+                  ],
                   warnings: []
                 }
               };
+            }
+
+            if (message.type === "start-download") {
+              return { ok: true, id: "preview-job" };
             }
 
             return {

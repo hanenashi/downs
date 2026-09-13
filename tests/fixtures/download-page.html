@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Downs direct-download fixture</title>
+  </head>
+  <body>
+    <h1>Downs direct-download fixture</h1>
+    <p id="result">Requesting short MPEG-TS playlist…</p>
+    <script>
+      fetch("mux-short.m3u8?fixture=direct-download")
+        .then((response) => response.text())
+        .then((text) => {
+          document.getElementById("result").textContent = text.includes("#EXT-X-ENDLIST")
+            ? "Short VOD playlist requested"
+            : "Unexpected response";
+        })
+        .catch((error) => {
+          document.getElementById("result").textContent = error.message;
+        });
+    </script>
+  </body>
+</html>

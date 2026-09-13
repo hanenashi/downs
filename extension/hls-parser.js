@@ -151,9 +151,13 @@
     const warnings = [];
     let pendingSegmentDuration;
     let pendingSegmentTitle = "";
+    let pendingByteRange = "";
+    let pendingDiscontinuity = false;
+    let pendingGap = false;
     let targetDuration;
     let playlistType;
     let hasEndList = false;
+    let iframeOnly = false;
 
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index];
@@ -247,6 +251,26 @@
         continue;
       }
 
+      if (line === "#EXT-X-I-FRAMES-ONLY") {
+        iframeOnly = true;
+        continue;
+      }
+
+      if (line.startsWith("#EXT-X-BYTERANGE:")) {
+        pendingByteRange = line.slice(line.indexOf(":") + 1);
+        continue;
+      }
+
+      if (line === "#EXT-X-DISCONTINUITY") {
+        pendingDiscontinuity = true;
+        continue;
+      }
+
+      if (line === "#EXT-X-GAP") {
+        pendingGap = true;
+        continue;
+      }
+
       if (line.startsWith("#EXTINF:")) {
         const value = line.slice(line.indexOf(":") + 1);
         const comma = value.indexOf(",");
@@ -259,10 +283,16 @@
         segments.push({
           duration: pendingSegmentDuration,
           title: pendingSegmentTitle,
-          url: resolveUrl(line, playlistUrl)
+          url: resolveUrl(line, playlistUrl),
+          byteRange: pendingByteRange,
+          discontinuity: pendingDiscontinuity,
+          gap: pendingGap
         });
         pendingSegmentDuration = undefined;
         pendingSegmentTitle = "";
+        pendingByteRange = "";
+        pendingDiscontinuity = false;
+        pendingGap = false;
       }
     }
 
@@ -291,6 +321,10 @@
       audioRenditions,
       subtitleRenditions,
       segments,
+      hasByteRanges: segments.some((segment) => Boolean(segment.byteRange)),
+      hasDiscontinuities: segments.some((segment) => segment.discontinuity),
+      hasGaps: segments.some((segment) => segment.gap),
+      iframeOnly,
       targetDuration,
       warnings
     };

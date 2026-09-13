@@ -209,7 +209,11 @@ function renderVariants(playlist) {
     button.append(createElement("span", "variant-arrow", "›"));
     button.addEventListener("click", () => {
       parentInspection = activeInspection;
-      inspectUrl(variant.url, label);
+      const hasSeparateAudio = Boolean(
+        variant.audioGroup &&
+        playlist.audioRenditions.some((rendition) => rendition.groupId === variant.audioGroup)
+      );
+      inspectUrl(variant.url, label, { hasSeparateAudio });
     });
     list.append(button);
   });
@@ -246,8 +250,63 @@ function renderRenditions(playlist) {
   return section;
 }
 
-function renderInspection(response, variantLabel = "") {
-  activeInspection = { response, variantLabel };
+function renderDownloadAction(playlist, response, variantLabel, context) {
+  if (playlist.kind !== "media") {
+    return null;
+  }
+
+  const eligibility = globalThis.DownsDownload.validateDirectPlaylist(playlist, context);
+  const section = createElement("section", "download-action");
+
+  if (!eligibility.supported) {
+    section.append(createElement("strong", "download-label", "Direct download unavailable"));
+    section.append(createElement("p", "download-reason", eligibility.reason));
+    return section;
+  }
+
+  const button = createElement(
+    "button",
+    "download-button",
+    variantLabel ? `Download ${variantLabel}` : "Download MP4"
+  );
+  button.type = "button";
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    button.textContent = "Opening download page…";
+    try {
+      const result = await ext.runtime.sendMessage({
+        type: "start-download",
+        url: response.fetch.finalUrl,
+        variantLabel,
+        hasSeparateAudio: Boolean(context.hasSeparateAudio)
+      });
+      if (!result?.ok) {
+        throw new Error(result?.error?.message || "The download page could not be opened.");
+      }
+      button.textContent = "Download page opened";
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = variantLabel ? `Download ${variantLabel}` : "Download MP4";
+      const prior = section.querySelector(".download-error");
+      prior?.remove();
+      section.append(
+        createElement("p", "download-error", error?.message || "The download page could not be opened.")
+      );
+    }
+  });
+  section.append(button);
+  section.append(
+    createElement(
+      "p",
+      "download-reason",
+      "Opens a tab to fetch four segments at a time, remux locally, and save through the browser."
+    )
+  );
+  return section;
+}
+
+function renderInspection(response, variantLabel = "", context = {}) {
+  activeInspection = { response, variantLabel, context };
   const playlist = response.playlist;
   const rootLink = selectedLink();
   inspectorEl.hidden = false;
@@ -268,7 +327,7 @@ function renderInspection(response, variantLabel = "") {
     back.addEventListener("click", () => {
       const parent = parentInspection;
       parentInspection = null;
-      renderInspection(parent.response, parent.variantLabel);
+      renderInspection(parent.response, parent.variantLabel, parent.context);
     });
     head.append(back);
   }
@@ -335,16 +394,21 @@ function renderInspection(response, variantLabel = "") {
     inspectorEl.append(createElement("p", "notice", warning));
   }
 
+  const downloadAction = renderDownloadAction(playlist, response, variantLabel, context);
+  if (downloadAction) {
+    inspectorEl.append(downloadAction);
+  }
+
   inspectorEl.append(
     createElement(
       "p",
       "inspector-note",
-      "Playlist and variant details are parsed locally. This milestone does not download media."
+      "Playlist details and supported media processing stay inside the extension."
     )
   );
 }
 
-async function inspectUrl(url, variantLabel = "") {
+async function inspectUrl(url, variantLabel = "", context = {}) {
   renderLoading(url);
 
   try {
@@ -353,7 +417,7 @@ async function inspectUrl(url, variantLabel = "") {
       renderError(response, url);
       return;
     }
-    renderInspection(response, variantLabel);
+    renderInspection(response, variantLabel, context);
   } catch (error) {
     renderError(
       { error: { code: "extension", message: error?.message || "The background worker did not respond." } },
