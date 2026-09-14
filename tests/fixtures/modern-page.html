@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Downs Modern HLS Fixture</title>
+    <link rel="icon" href="data:,">
+  </head>
+  <body>
+    <h1>fMP4 with separate audio fixture</h1>
+    <p id="result">Loading master playlist…</p>
+    <script>
+      fetch("/modern/master.m3u8")
+        .then((response) => {
+          document.getElementById("result").textContent = `HTTP ${response.status}`;
+          return response.text();
+        })
+        .then((text) => {
+          document.body.dataset.playlist = text.startsWith("#EXTM3U") ? "loaded" : "invalid";
+        })
+        .catch((error) => {
+          document.getElementById("result").textContent = error.message;
+        });
+    </script>
+  </body>
+</html>

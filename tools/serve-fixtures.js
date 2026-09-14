@@ -6,6 +6,7 @@ const http = require("node:http");
 const path = require("node:path");
 
 const fixtureRoot = path.resolve(__dirname, "..", "tests", "fixtures");
+const modernFixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "modern-fixture");
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".m3u8", "application/vnd.apple.mpegurl; charset=utf-8"],
@@ -16,6 +17,12 @@ const contentTypes = new Map([
 
 function fixturePath(urlValue) {
   const pathname = decodeURIComponent(new URL(urlValue, "http://127.0.0.1").pathname);
+  if (pathname === "/modern" || pathname.startsWith("/modern/")) {
+    const relative = pathname.replace(/^\/modern\/?/, "");
+    const resolved = path.resolve(modernFixtureRoot, relative);
+    if (resolved !== modernFixtureRoot && !resolved.startsWith(`${modernFixtureRoot}${path.sep}`)) return null;
+    return resolved;
+  }
   const relative = pathname === "/" ? "download-page.html" : pathname.replace(/^\/+/, "");
   const resolved = path.resolve(fixtureRoot, relative);
   if (resolved !== fixtureRoot && !resolved.startsWith(`${fixtureRoot}${path.sep}`)) return null;
@@ -107,6 +114,7 @@ function main(argv = process.argv.slice(2)) {
   server.listen(port, host, () => {
     const displayHost = host === "0.0.0.0" ? "DEVICE-IP" : host;
     console.log(`Downs fixture page: http://${displayHost}:${port}/download-page.html`);
+    console.log(`Modern fixture page: http://${displayHost}:${port}/modern-page.html`);
     console.log("Press Ctrl+C to stop.");
   });
   return 0;

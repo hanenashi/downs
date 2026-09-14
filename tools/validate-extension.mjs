@@ -8,9 +8,11 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const extensionDir = path.join(root, "extension");
 const manifests = ["manifest.json", "manifest.firefox.json"];
 const requiredFiles = [
+  "audio-core.js",
   "background.js",
   "download-core.js",
   "download-worker.js",
+  "fmp4-core.js",
   "downloads.css",
   "downloads.html",
   "downloads.js",
@@ -72,8 +74,8 @@ assert.doesNotMatch(
 );
 assert.match(
   popupHtml,
-  /<script src="link-group-core\.js"><\/script>[\s\S]*<script src="popup\.js"><\/script>/,
-  "popup must load grouping helpers before its controller"
+  /<script src="link-group-core\.js"><\/script>[\s\S]*<script src="audio-core\.js"><\/script>[\s\S]*<script src="popup\.js"><\/script>/,
+  "popup must load grouping and audio helpers before its controller"
 );
 
 console.log("Extension manifests and shipped files look valid.");

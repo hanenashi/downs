@@ -19,6 +19,58 @@
     return { supported: false, code, reason };
   }
 
+  function fmp4TrackIssue(playlist, label) {
+    if (!playlist || playlist.kind !== "media") {
+      return unsupported("not-media", `${label} is not an HLS media playlist.`);
+    }
+    if (playlist.drm) {
+      return unsupported("protected", "DRM or protected media cannot be downloaded.");
+    }
+    if (playlist.encrypted) {
+      return unsupported("encrypted", `${label} is encrypted and is not supported yet.`);
+    }
+    if (!playlist.vod || playlist.live) {
+      return unsupported("live", `${label} has no EXT-X-ENDLIST.`);
+    }
+    if (
+      playlist.segmented !== "fmp4" ||
+      !playlist.mapUrl ||
+      playlist.maps?.length !== 1 ||
+      playlist.maps[0]?.byteRange
+    ) {
+      return unsupported("fmp4-layout", `${label} is not a simple fMP4 VOD track with one EXT-X-MAP.`);
+    }
+    if (playlist.iframeOnly || playlist.hasByteRanges || playlist.hasDiscontinuities || playlist.hasGaps) {
+      return unsupported("fmp4-layout", `${label} uses an fMP4 feature that this milestone does not support.`);
+    }
+    if (!Array.isArray(playlist.segments) || playlist.segments.length === 0) {
+      return unsupported("empty", `${label} does not contain media segments.`);
+    }
+    return null;
+  }
+
+  function validateSplitFmp4Playlists(videoPlaylist, audioPlaylist) {
+    const videoIssue = fmp4TrackIssue(videoPlaylist, "The video playlist");
+    if (videoIssue) return videoIssue;
+    const audioIssue = fmp4TrackIssue(audioPlaylist, "The audio playlist");
+    if (audioIssue) return audioIssue;
+    const duration = (playlist) => playlist.segments.reduce(
+      (total, segment) => total + (Number(segment.duration) || 0),
+      0
+    );
+    if (Math.abs(duration(videoPlaylist) - duration(audioPlaylist)) > 2) {
+      return unsupported(
+        "track-alignment",
+        "The separate video and audio playlist durations differ by more than two seconds."
+      );
+    }
+    return {
+      supported: true,
+      code: "direct-fmp4-split-vod",
+      reason: "VOD · fMP4 / CMAF · separate H.264 + AAC · unencrypted"
+    };
+  }
+
   function validateDirectPlaylist(playlist, options = {}) {
     if (!playlist || playlist.kind === "not-hls") {
       return unsupported("not-hls", "The response is not an HLS playlist.");
@@ -38,14 +90,25 @@
         `${playlist.encryptionMethod || "Encrypted"} playlists are not supported yet.`
       );
     }
-    if (options.hasSeparateAudio) {
-      return unsupported("separate-audio", "This playlist uses separate audio tracks.");
-    }
     if (!playlist.vod || playlist.live) {
       return unsupported(
         "live",
         "This playlist has no EXT-X-ENDLIST. Live and event downloads are not supported yet."
       );
+    }
+    if (options.hasSeparateAudio) {
+      if (playlist.segmented !== "fmp4" || !playlist.mapUrl) {
+        return unsupported("separate-audio", "This playlist uses a separate audio track in an unsupported layout.");
+      }
+      if (!options.audioPlaylistUrl) {
+        return unsupported("separate-audio", "The master playlist does not provide a usable audio rendition URL.");
+      }
+      const issue = fmp4TrackIssue(playlist, "The video playlist");
+      return issue || {
+        supported: true,
+        code: "direct-fmp4-split-vod",
+        reason: "VOD · fMP4 / CMAF · separate audio"
+      };
     }
     if (playlist.maps?.length || playlist.mapUrl || playlist.segmented === "fmp4") {
       return unsupported("fmp4", "fMP4 / CMAF playlists are not supported yet.");
@@ -289,6 +352,7 @@
     randomHash,
     safeFilename,
     suggestFilename,
+    validateSplitFmp4Playlists,
     validateDirectPlaylist
   };
 });

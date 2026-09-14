@@ -3,6 +3,7 @@
 importScripts(
   "hls-parser.js",
   "download-core.js",
+  "fmp4-core.js",
   "vendor/mux-mp4.min.js"
 );
 
@@ -233,15 +234,12 @@ function createTransmuxer() {
   };
 }
 
-async function runJob(job) {
+async function runTsJob(job, signal) {
   const playlistUrl = job?.playlistUrl || job?.url;
   if (!job?.id || !playlistUrl) {
     throw new DownloadError("job", "The download job is missing its playlist URL.");
   }
 
-  activeController = new AbortController();
-  activeRequestContext = job.requestContext || {};
-  const { signal } = activeController;
   post("progress", { phase: "playlist", message: "Checking playlist…", completed: 0, total: 0, bytes: 0 });
 
   const playlist = await fetchPlaylist(playlistUrl, signal);
@@ -359,6 +357,145 @@ async function runJob(job) {
     outputStorage: result.storageName ? "opfs" : "memory",
     sourceBytes: inputBytes
   });
+}
+
+function playlistDuration(playlist) {
+  return playlist.segments.reduce(
+    (total, segment) => total + (Number(segment.duration) || 0),
+    0
+  );
+}
+
+async function runSplitFmp4Job(job, signal) {
+  if (!job?.id || !job.playlistUrl || !job.audioPlaylistUrl) {
+    throw new DownloadError("job", "The fMP4 job is missing its video or audio playlist URL.");
+  }
+
+  post("progress", { phase: "playlist", message: "Checking video and audio…", completed: 0, total: 0, bytes: 0 });
+  const [videoPlaylist, audioPlaylist] = await Promise.all([
+    fetchPlaylist(job.playlistUrl, signal),
+    fetchPlaylist(job.audioPlaylistUrl, signal)
+  ]);
+  const eligibility = globalThis.DownsDownload.validateSplitFmp4Playlists(
+    videoPlaylist,
+    audioPlaylist
+  );
+  if (!eligibility.supported) {
+    throw new DownloadError(eligibility.code, eligibility.reason);
+  }
+
+  const schedule = globalThis.DownsFmp4.interleaveSegments(
+    videoPlaylist.segments,
+    audioPlaylist.segments
+  );
+  if (schedule.length > MAX_SEGMENTS) {
+    throw new DownloadError(
+      "segment-count",
+      `The selected tracks have more than the ${MAX_SEGMENTS.toLocaleString()} segment safety limit.`
+    );
+  }
+
+  const [videoInit, audioInit] = await Promise.all([
+    fetchBytes(videoPlaylist.mapUrl, signal, "Video initialization segment"),
+    fetchBytes(audioPlaylist.mapUrl, signal, "Audio initialization segment")
+  ]);
+  const mp4Probe = globalThis.muxjs?.probe || globalThis.muxjs?.mp4?.probe;
+  const videoTracks = mp4Probe?.tracks(videoInit.bytes) || [];
+  const audioTracks = mp4Probe?.tracks(audioInit.bytes) || [];
+  if (
+    videoTracks.length !== 1 ||
+    videoTracks[0].type !== "video" ||
+    !/^avc[13]\b/i.test(videoTracks[0].codec || "") ||
+    audioTracks.length !== 1 ||
+    audioTracks[0].type !== "audio" ||
+    !/^mp4a\.40\./i.test(audioTracks[0].codec || "")
+  ) {
+    throw new DownloadError(
+      "fmp4-codecs",
+      "This fMP4 milestone requires one H.264 video track and one AAC audio track."
+    );
+  }
+  let combined;
+  try {
+    combined = globalThis.DownsFmp4.combineInitialization(videoInit.bytes, audioInit.bytes);
+  } catch (error) {
+    throw new DownloadError(
+      "fmp4-init",
+      `The fMP4 tracks could not be combined: ${error?.message || "invalid initialization metadata"}`
+    );
+  }
+
+  const duration = Math.max(playlistDuration(videoPlaylist), playlistDuration(audioPlaylist));
+  const finiteInit = globalThis.DownsDownload.patchMp4Durations(combined.bytes, duration);
+  activeSink = await createOutputSink(job.id);
+  await activeSink.write(finiteInit);
+  let inputBytes = videoInit.bytes.byteLength + audioInit.bytes.byteLength;
+  let outputBytes = finiteInit.byteLength;
+
+  post("progress", {
+    phase: "segments",
+    message: "Downloading video and audio",
+    completed: 0,
+    total: schedule.length,
+    bytes: inputBytes
+  });
+
+  await globalThis.DownsDownload.processInOrder(
+    schedule,
+    FETCH_CONCURRENCY,
+    async (segment, index) => {
+      ensureNotCancelled(signal);
+      const response = await fetchBytes(segment.url, signal, `${segment.kind === "audio" ? "Audio" : "Video"} segment`, {
+        segmentIndex: index + 1
+      });
+      inputBytes += response.bytes.byteLength;
+      return response.bytes;
+    },
+    async (segmentBytes, segment, index) => {
+      ensureNotCancelled(signal);
+      const oldId = segment.kind === "audio" ? combined.audioTrackId : combined.videoTrackId;
+      const newId = segment.kind === "audio" ? combined.outputAudioTrackId : combined.videoTrackId;
+      const remapped = globalThis.DownsFmp4.remapFragment(segmentBytes, oldId, newId, index + 1);
+      await activeSink.write(remapped);
+      outputBytes += remapped.byteLength;
+      post("progress", {
+        phase: "segments",
+        message: "Downloading video and audio",
+        completed: index + 1,
+        total: schedule.length,
+        bytes: inputBytes,
+        outputBytes
+      });
+    }
+  );
+
+  ensureNotCancelled(signal);
+  post("progress", {
+    phase: "remuxing",
+    message: "Finalizing MP4…",
+    completed: schedule.length,
+    total: schedule.length,
+    bytes: inputBytes,
+    outputBytes
+  });
+  const result = await activeSink.finish();
+  activeSink = null;
+  post("complete", {
+    file: result.file,
+    size: result.size,
+    storageName: result.storageName,
+    outputStorage: result.storageName ? "opfs" : "memory",
+    sourceBytes: inputBytes
+  });
+}
+
+async function runJob(job) {
+  activeController = new AbortController();
+  activeRequestContext = job?.requestContext || {};
+  if (job?.supportMode === "direct-fmp4-split-vod") {
+    return runSplitFmp4Job(job, activeController.signal);
+  }
+  return runTsJob(job, activeController.signal);
 }
 
 self.addEventListener("message", (event) => {

@@ -77,3 +77,57 @@ playlists as two playbacks. Expanding the primary exposed all three related
 children; selecting the 1080p child opened the normal media inspector and
 Download action. Both widths had zero horizontal overflow and no page or console
 errors. No ADB/device test was performed in this pass.
+
+## 2026-09-14 — Separate fMP4/CMAF implementation pass
+
+Downs 2.6 adds a deliberately bounded modern DIRECT layout: a finite,
+unencrypted fMP4 video playlist with exactly one init map plus the selected
+master variant's default finite, unencrypted fMP4 audio rendition. Actual init
+metadata must contain one H.264 video track and one AAC audio track. Downs
+combines the init metadata, assigns the audio track a non-colliding ID, rewrites
+fragment track IDs and sequence numbers, and interleaves fragments by playlist
+time without re-encoding.
+
+The generated local fixture produced 6 video and 7 audio fragments. The complete
+extension worker assembled and exported a 556,365-byte MP4: container 12.021333
+seconds against 12.000 expected, H.264 320×180, AAC mono 48 kHz, 360 video
+frames, zero video/audio DTS regressions, and a clean full decode.
+
+The public Shaka Angel One fixture then exercised the same path with 15 video
+and 15 default-English audio fragments. Its 1,721,844-byte export passed:
+container and expected duration 60.000 seconds, H.264 192×144, stereo AAC 48
+kHz, 1,500 video frames, zero DTS regressions for both tracks, and clean full
+decode. The public URL remains exploratory rather than an automated dependency.
+
+At the 2.6 milestone, the intentional limits were default audio only,
+H.264/AAC only, one init map per track, at most two seconds of
+playlist-duration difference, and no byte ranges, encryption, discontinuities,
+gaps, or live/event playlists. Version 2.7 removes only the default-audio limit.
+
+The generated fixture was also exercised through the physical Pixel 10a on
+Kiwi 137.0.7337.0. Kiwi detected the master, displayed the split audio, enabled
+the 180p action, completed the private job, and exported it through **Save to
+device**. The ADB-pulled output was 556,365 bytes and passed the same native
+validator: 12.021 seconds against 12.000 expected, H.264 320×180, AAC, 360
+frames, and a clean full decode. Kiwi installed the 2.6 zip beside the existing
+2.5 development build under a new extension ID; the old copy was disabled, not
+deleted, for the test.
+
+## 2026-09-15 — Alternate audio selection pass
+
+Downs 2.7 adds a compact selector inside an inspected video variant when its
+master audio group contains multiple playable rendition URLs. It prefers the
+declared default but queues the explicitly chosen URL and label. Generic names
+such as `audio_1` fall back to a localized language label.
+
+The deterministic fixture now produces English 440 Hz and Japanese 880 Hz AAC
+tracks. Desktop Chromium and Kiwi 137 each selected Japanese and exported a
+556,365-byte MP4. Both files passed the normal validator at 12.021 seconds,
+H.264 320×180, AAC, 360 frames, and clean full decode. Their decoded-audio MD5
+was `6e54481556bf7c7f268781b65d2f7218`, exactly matching the Japanese playlist;
+English was `d929d4078926b765897715cd11b1bffa`.
+
+Static Chromium UI checks at 420×640 and 320×640 confirmed the default choice,
+selection change, queued audio URL and label, and zero horizontal overflow or
+console errors. On Kiwi, the selector opened the native Android choice sheet,
+updated the explanatory copy to Japanese, and completed the same export path.

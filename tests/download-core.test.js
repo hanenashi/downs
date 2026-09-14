@@ -10,7 +10,8 @@ const {
   randomHash,
   safeFilename,
   suggestFilename,
-  validateDirectPlaylist
+  validateDirectPlaylist,
+  validateSplitFmp4Playlists
 } = require("../extension/download-core.js");
 
 function mp4Box(type, payloads) {
@@ -80,6 +81,47 @@ test("accepts only finite, clear, muxed MPEG-TS media playlists", () => {
   assert.equal(validateDirectPlaylist(media({ iframeOnly: true })).code, "iframe-only");
   assert.equal(validateDirectPlaylist(media(), { hasSeparateAudio: true }).code, "separate-audio");
   assert.equal(validateDirectPlaylist(media({ segments: [] })).code, "empty");
+});
+
+test("accepts only a simple clear fMP4 video and separate audio pair", () => {
+  const video = media({
+    segmented: "fmp4",
+    mapUrl: "https://example.com/video-init.mp4",
+    maps: [{ url: "https://example.com/video-init.mp4" }],
+    segments: [{ url: "https://example.com/video-1.m4s" }]
+  });
+  const audio = media({
+    segmented: "fmp4",
+    mapUrl: "https://example.com/audio-init.mp4",
+    maps: [{ url: "https://example.com/audio-init.mp4" }],
+    segments: [{ url: "https://example.com/audio-1.m4s" }]
+  });
+
+  assert.equal(
+    validateDirectPlaylist(video, {
+      hasSeparateAudio: true,
+      audioPlaylistUrl: "https://example.com/audio.m3u8"
+    }).code,
+    "direct-fmp4-split-vod"
+  );
+  assert.equal(validateSplitFmp4Playlists(video, audio).supported, true);
+  assert.equal(validateSplitFmp4Playlists(video, { ...audio, live: true, vod: false }).code, "live");
+  assert.equal(validateSplitFmp4Playlists(video, { ...audio, maps: [] }).code, "fmp4-layout");
+  assert.equal(
+    validateSplitFmp4Playlists(video, {
+      ...audio,
+      maps: [{ url: "https://example.com/audio-init.mp4", byteRange: "100@0" }]
+    }).code,
+    "fmp4-layout"
+  );
+  assert.equal(validateSplitFmp4Playlists(video, { ...audio, hasDiscontinuities: true }).code, "fmp4-layout");
+  assert.equal(
+    validateSplitFmp4Playlists(video, {
+      ...audio,
+      segments: [{ url: "https://example.com/audio-1.m4s", duration: 5 }]
+    }).code,
+    "track-alignment"
+  );
 });
 
 test("sanitizes filenames and always returns one mp4 suffix", () => {

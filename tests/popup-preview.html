@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Downs popup preview</title>
+    <link rel="icon" href="data:,">
     <link rel="stylesheet" href="../extension/popup.css">
   </head>
   <body>
@@ -27,15 +28,17 @@
     </main>
 
     <footer>
-      <span>Downs 2.5</span>
+      <span>Downs 2.7</span>
     </footer>
 
     <script src="../extension/link-group-core.js"></script>
     <script src="../extension/download-core.js"></script>
+    <script src="../extension/audio-core.js"></script>
     <script>
       const masterUrl = "https://cdn.example.com/live/master.m3u8";
       const mediaUrl = "https://cdn.example.com/live/video/1080.m3u8";
       const now = Date.now();
+      globalThis.previewMessages = [];
 
       globalThis.chrome = {
         storage: {
@@ -43,6 +46,7 @@
         },
         runtime: {
           async sendMessage(message) {
+            globalThis.previewMessages.push(message);
             if (message.type === "get-download-summary") {
               return { ok: true, active: 1, ready: 1 };
             }
@@ -99,15 +103,16 @@
                   kind: "media",
                   vod: true,
                   live: false,
-                  segmented: "ts",
+                  segmented: "fmp4",
                   encrypted: false,
                   drm: false,
-                  mapUrl: "",
+                  mapUrl: "https://cdn.example.com/live/video/init.mp4",
+                  maps: [{ url: "https://cdn.example.com/live/video/init.mp4" }],
                   variants: [],
                   audioRenditions: [],
                   segments: [
-                    { url: "https://cdn.example.com/live/video/segment-001.ts", duration: 6 },
-                    { url: "https://cdn.example.com/live/video/segment-002.ts", duration: 6 }
+                    { url: "https://cdn.example.com/live/video/segment-001.m4s", duration: 6 },
+                    { url: "https://cdn.example.com/live/video/segment-002.m4s", duration: 6 }
                   ],
                   warnings: []
                 }
@@ -135,23 +140,28 @@
                     bandwidth: 5_800_000,
                     averageBandwidth: 5_100_000,
                     resolution: "1920x1080",
-                    codecs: "avc1.640028,mp4a.40.2"
+                    codecs: "avc1.640028,mp4a.40.2",
+                    audioGroup: "aac"
                   },
                   {
                     url: "https://cdn.example.com/live/video/720.m3u8",
                     bandwidth: 3_100_000,
                     resolution: "1280x720",
-                    codecs: "avc1.64001f,mp4a.40.2"
+                    codecs: "avc1.64001f,mp4a.40.2",
+                    audioGroup: "aac"
                   },
                   {
                     url: "https://cdn.example.com/live/video/480.m3u8",
                     bandwidth: 1_400_000,
                     resolution: "854x480",
-                    codecs: "avc1.4d401e,mp4a.40.2"
+                    codecs: "avc1.4d401e,mp4a.40.2",
+                    audioGroup: "aac"
                   }
                 ],
                 audioRenditions: [
-                  { name: "Japanese", language: "ja", channels: "2", url: "https://cdn.example.com/live/audio/ja.m3u8" }
+                  { name: "English", language: "en", channels: "2", groupId: "aac", default: false, autoSelect: true, url: "https://cdn.example.com/live/audio/en.m3u8" },
+                  { name: "Japanese", language: "ja", channels: "2", groupId: "aac", default: true, autoSelect: true, url: "https://cdn.example.com/live/audio/ja.m3u8" },
+                  { name: "Commentary", language: "en", channels: "2", groupId: "aac", default: false, autoSelect: false, url: "https://cdn.example.com/live/audio/commentary.m3u8" }
                 ],
                 warnings: []
               }

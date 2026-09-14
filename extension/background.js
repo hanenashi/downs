@@ -357,9 +357,27 @@ async function startDownloadJob(message) {
     return inspection;
   }
 
-  const eligibility = globalThis.DownsDownload.validateDirectPlaylist(inspection.playlist, {
-    hasSeparateAudio: Boolean(message.hasSeparateAudio)
+  let audioInspection = null;
+  let eligibility = globalThis.DownsDownload.validateDirectPlaylist(inspection.playlist, {
+    hasSeparateAudio: Boolean(message.hasSeparateAudio),
+    audioPlaylistUrl: message.audioPlaylistUrl
   });
+  if (eligibility.supported && eligibility.code === "direct-fmp4-split-vod") {
+    audioInspection = await inspectPlaylist(message.audioPlaylistUrl, requestContext);
+    if (!audioInspection.ok) {
+      return {
+        ok: false,
+        error: {
+          code: "audio-playlist",
+          message: `The selected audio playlist could not be inspected: ${audioInspection.error?.message || "unknown error"}`
+        }
+      };
+    }
+    eligibility = globalThis.DownsDownload.validateSplitFmp4Playlists(
+      inspection.playlist,
+      audioInspection.playlist
+    );
+  }
   if (!eligibility.supported) {
     return {
       ok: false,
@@ -374,6 +392,7 @@ async function startDownloadJob(message) {
   const job = globalThis.DownsJobs.createJob({
     id,
     playlistUrl: inspection.fetch.finalUrl,
+    audioPlaylistUrl: audioInspection?.fetch.finalUrl || "",
     sourcePageTitle: sourceTab?.title || "",
     filename: globalThis.DownsDownload.filenameForMode(
       sourceTab?.title || "downs-video",
@@ -382,6 +401,8 @@ async function startDownloadJob(message) {
     ),
     variantLabel: message.variantLabel || "",
     hasSeparateAudio: Boolean(message.hasSeparateAudio),
+    audioLabel: message.audioLabel || "",
+    supportMode: eligibility.code,
     supportSummary: eligibility.reason,
     requestContext
   });

@@ -59,6 +59,10 @@ function formatBandwidth(value) {
   return `${Math.round(value / 1_000)} kb/s`;
 }
 
+function audioRenditionLabel(rendition) {
+  return globalThis.DownsAudio.renditionLabel(rendition, navigator.languages);
+}
+
 function containerLabel(segmented) {
   return {
     ts: "MPEG-TS",
@@ -255,13 +259,15 @@ function renderVariants(playlist) {
     button.append(createElement("span", "variant-arrow", "›"));
     button.addEventListener("click", () => {
       parentInspection = activeInspection;
-      const hasSeparateAudio = Boolean(
-        variant.audioGroup &&
-        playlist.audioRenditions.some((rendition) => rendition.groupId === variant.audioGroup)
-      );
+      const matchingAudio = globalThis.DownsAudio.matchingRenditions(playlist, variant);
+      const audioRendition = globalThis.DownsAudio.preferredRendition(matchingAudio);
+      const hasSeparateAudio = Boolean(variant.audioGroup && matchingAudio.length);
       inspectUrl(variant.url, label, {
         ...activeInspection.context,
-        hasSeparateAudio
+        hasSeparateAudio,
+        audioRenditions: matchingAudio,
+        audioPlaylistUrl: audioRendition?.url || "",
+        audioLabel: audioRenditionLabel(audioRendition)
       });
     });
     list.append(button);
@@ -287,7 +293,11 @@ function renderRenditions(playlist) {
       createElement(
         "span",
         "",
-        [rendition.language, rendition.channels ? `${rendition.channels} ch` : ""]
+        [
+          rendition.language,
+          rendition.channels ? `${rendition.channels} ch` : "",
+          rendition.default ? "default" : ""
+        ]
           .filter(Boolean)
           .join(" · ") || "metadata only"
       )
@@ -306,6 +316,35 @@ function renderDownloadAction(playlist, response, variantLabel, context) {
 
   const eligibility = globalThis.DownsDownload.validateDirectPlaylist(playlist, context);
   const section = createElement("section", "download-action");
+
+  const audioRenditions = context.hasSeparateAudio ? context.audioRenditions || [] : [];
+  if (audioRenditions.length > 1) {
+    const field = createElement("label", "audio-choice");
+    field.append(createElement("span", "audio-choice-label", "Audio"));
+    const select = createElement("select", "audio-select");
+    select.setAttribute("aria-label", "Audio rendition");
+    for (const rendition of audioRenditions) {
+      const option = createElement(
+        "option",
+        "",
+        globalThis.DownsAudio.optionLabel(rendition, navigator.languages)
+      );
+      option.value = rendition.url;
+      option.selected = rendition.url === context.audioPlaylistUrl;
+      select.append(option);
+    }
+    select.addEventListener("change", () => {
+      const rendition = audioRenditions.find((item) => item.url === select.value);
+      if (!rendition) return;
+      renderInspection(response, variantLabel, {
+        ...context,
+        audioPlaylistUrl: rendition.url,
+        audioLabel: audioRenditionLabel(rendition)
+      });
+    });
+    field.append(select);
+    section.append(field);
+  }
 
   if (!eligibility.supported) {
     section.append(createElement("strong", "download-label", "Direct download unavailable"));
@@ -328,6 +367,8 @@ function renderDownloadAction(playlist, response, variantLabel, context) {
         url: response.fetch.finalUrl,
         variantLabel,
         hasSeparateAudio: Boolean(context.hasSeparateAudio),
+        audioPlaylistUrl: context.audioPlaylistUrl || "",
+        audioLabel: context.audioLabel || "",
         requestContext: context.requestContext || {}
       });
       if (!result?.ok) {
@@ -349,7 +390,9 @@ function renderDownloadAction(playlist, response, variantLabel, context) {
     createElement(
       "p",
       "download-reason",
-      "Adds a job to Downs Downloads, where it remuxes locally and waits for you to save it."
+      context.hasSeparateAudio
+        ? `Adds video with ${context.audioLabel || "the default audio track"} to Downs Downloads for local assembly.`
+        : "Adds a job to Downs Downloads, where it remuxes locally and waits for you to save it."
     )
   );
   return section;

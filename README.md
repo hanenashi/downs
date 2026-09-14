@@ -12,11 +12,10 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.5 is experimental. The current build keeps the bounded DIRECT download
-path, persistent Downloads manager, and narrowly scoped request-context replay,
-then groups related master, variant, audio, and token-refresh detections into a
-compact playback entry. The supported media shape is still finite, unencrypted,
-muxed MPEG-TS VOD containing H.264 video and AAC audio.
+Downs 2.7 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downloads manager, request-context replay, and playback grouping, it can now
+assemble a conservative modern HLS layout: finite unencrypted fMP4/CMAF VOD
+with one separate H.264 video track and a user-selected AAC audio rendition.
 
 It can:
 
@@ -24,27 +23,29 @@ It can:
 - fetch a selected playlist from the extension context with browser credentials;
 - distinguish master, media, and non-HLS responses;
 - list variants with resolution, bandwidth, and codecs;
-- list split audio renditions;
+- list split audio renditions and select among those matching a video variant;
 - identify VOD versus live/event playlists;
 - identify MPEG-TS, fMP4/CMAF, `EXT-X-MAP`, and `EXT-X-KEY`;
 - distinguish ordinary AES-128 metadata from likely protected media;
-- report HTTP, timeout, HTML-response, and other useful failure reasons.
+- report HTTP, timeout, HTML-response, and other useful failure reasons;
 - open or focus a dedicated Downloads manager for supported media playlists;
 - fetch up to four MPEG-TS segments concurrently while consuming them in order;
 - remux MPEG-TS to fragmented MP4 in JavaScript with the bundled mux.js library;
+- combine separate H.264 and AAC fMP4 initialization metadata, remap colliding
+  track IDs, and interleave existing CMAF fragments without re-encoding;
 - stream output to browser-private storage when available, with a bounded
   in-memory fallback;
 - persist queued, active, finished, failed, and cancelled job metadata;
 - retain finished private MP4s until **Save to device** or **Delete** is chosen;
 - save again without rebuilding, retry failures from the current playlist, and
-  remove partial output when a job is cancelled.
+  remove partial output when a job is cancelled;
 - write finite movie and track durations into remuxed MP4 headers for players
   that do not treat mux.js's unknown-duration sentinel correctly;
 - name new jobs from the suggested page title, a local date stamp, or a random
-  ten-character ID selected in **Settings**.
+  ten-character ID selected in **Settings**;
 - replay a detected player page's origin as Referer while inspecting or fetching
   that stream, using temporary exact-URL browser rules that are removed after
-  each request.
+  each request;
 - collapse related playlist detections under one primary row while keeping every
   observed URL available through **Show related playlists**.
 
@@ -65,6 +66,13 @@ The popup lists playlists detected on the current tab. Select one to fetch and
 inspect it. If it is a master playlist, select a variant to inspect that child
 media playlist. A **Download** button appears only when the selected media
 playlist passes the current DIRECT support checks.
+
+For a supported fMP4 master with separate audio, Downs initially selects that
+variant's default audio rendition. When several matching renditions exist, a
+compact **Audio** selector appears in the inspected variant before download.
+The manager fetches the chosen playlist, verifies both tracks' simple VOD shape
+and actual H.264/AAC initialization metadata, then assembles their fragment
+timelines into one MP4.
 
 Players often request a master plus several variants or audio playlists while
 switching quality. Downs groups conservative same-CDN URL families and short
@@ -97,8 +105,12 @@ python3 tools/package_extensions.py
 ```
 
 Then use Kiwi's Extensions page in developer mode to load
-`dist/downs-chromium.zip`. Exact installation behavior and the extension APIs
-must be verified on the physical device before Kiwi support is claimed.
+`dist/downs-chromium.zip`. Downs 2.7 has been verified on the physical Pixel for
+both the MPEG-TS path and a generated two-language fMP4 fixture. The Japanese
+alternate rendition survived selection, assembly, device export, and native
+audio-fingerprint validation. Recheck this manual path after browser or
+extension changes because Kiwi may install a new development zip beside an
+older build rather than replacing it.
 
 Kiwi Browser is discontinued and no longer receives engine maintenance. Downs
 therefore treats it as a specifically tested compatibility target, not a safe
@@ -137,11 +149,15 @@ requests still go to the stream's own servers.
 ## Known limits
 
 - No DRM bypass. Protected media is reported as unsupported.
-- Live/event playlists, AES-128 encryption, fMP4/CMAF input, split audio
-  renditions, byte-range segments, discontinuities, gaps, I-frame-only media,
-  audio-only playlists, and video-only playlists are not downloaded.
-- The current muxer path expects H.264 video and AAC audio in MPEG-TS. It remuxes
-  rather than re-encoding.
+- Live/event playlists, AES-128 encryption, byte-range segments or init maps,
+  discontinuities, gaps, I-frame-only media, and unsupported codecs are not
+  downloaded.
+- fMP4/CMAF support currently requires one map per track, separate H.264 video
+  and AAC audio VOD playlists whose durations differ by no more than two
+  seconds. Multiplexed fMP4, multiple map periods, and advanced edit/timeline
+  layouts remain unsupported.
+- Both DIRECT paths preserve the encoded H.264/AAC media rather than
+  re-encoding it.
 - Extension-context fetches can still fail when a site requires an exact page
   path, custom headers, signed request values, or provenance that an extension
   cannot safely reproduce. Downs deliberately replays only the page origin as
@@ -161,9 +177,11 @@ Run the parser tests and source checks:
 
 ```bash
 node --test tests/*.test.js
+node --check extension/audio-core.js
 node --check extension/hls-parser.js
 node --check extension/download-core.js
 node --check extension/download-worker.js
+node --check extension/fmp4-core.js
 node --check extension/job-core.js
 node --check extension/link-group-core.js
 node --check extension/request-context.js
@@ -199,6 +217,17 @@ matrix and interpretation rules.
 fixture. Its playlist returns HTTP 403 without the serving page's Referer origin
 and HTTP 200 with it.
 
+Generate the deterministic separate-track fMP4/CMAF fixture, then open its page:
+
+```bash
+tools/generate-modern-fixture.sh
+node tools/serve-fixtures.js
+# http://127.0.0.1:8765/modern-page.html
+```
+
+Generated media stays under ignored `test-artifacts/`. FFmpeg is used only to
+create and validate development fixtures; it is not part of the extension.
+
 Build dependency-free Chromium and Firefox zip packages:
 
 ```bash
@@ -220,9 +249,8 @@ extension packages.
 
 ## Direction
 
-The next DIRECT work is compatibility verification on physical Kiwi and
-Firefox, larger multi-variant grouping trials, and deciding whether fMP4/CMAF or
-separate audio/video is the next worthwhile format milestone. CAPTURE and DUMP
-remain later, separate strategies; neither is silently substituted for DIRECT.
+The next DIRECT work is broader fMP4 compatibility sampling, larger-file stress
+testing, and Firefox verification. CAPTURE and DUMP remain later, separate
+strategies; neither is silently substituted for DIRECT.
 
 Small streams. Clear answers. No cathedral.

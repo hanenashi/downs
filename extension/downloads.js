@@ -122,6 +122,9 @@ function renderDetails(job, row) {
     ["Playlist URL", job.playlistUrl || "Unavailable"],
     ["Attempt", String(job.attempt || 1)]
   ];
+  if (job.audioPlaylistUrl) {
+    entries.splice(1, 0, ["Audio playlist", job.audioPlaylistUrl]);
+  }
   if (job.error) {
     entries.push(["Error code", job.error.httpStatus ? `HTTP ${job.error.httpStatus}` : job.error.code || "unknown"]);
   }

@@ -12,9 +12,11 @@ EXTENSION_DIR = ROOT / "extension"
 BUILD_ROOT = ROOT / "build"
 DIST_DIR = ROOT / "dist"
 FILES = [
+    "audio-core.js",
     "hls-parser.js",
     "download-core.js",
     "download-worker.js",
+    "fmp4-core.js",
     "job-core.js",
     "link-group-core.js",
     "request-context.js",

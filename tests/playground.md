@@ -43,6 +43,20 @@ returns HTTP 403 to a plain extension request and HTTP 200 when Downs temporaril
 replays the serving page's Referer origin. This fixture tests request provenance;
 it does not weaken any media support gate.
 
+For the modern separate-track path, generate a 12-second synthetic H.264/AAC
+fMP4 fixture before starting the server:
+
+```bash
+tools/generate-modern-fixture.sh
+node tools/serve-fixtures.js
+```
+
+Open `http://127.0.0.1:8765/modern-page.html`, select its single video variant,
+choose either English or Japanese, download, export, and validate against
+`test-artifacts/modern-fixture/video.m3u8`. The tones are deliberately distinct,
+so decoded-audio MD5 can also prove which rendition was assembled. Generated
+media remains ignored and must not be committed.
+
 For a deliberate Kiwi run, bind the fixture server to the development machine's
 interfaces, open the displayed path using that machine's reachable LAN or
 tailnet address, and stop the server afterward:
