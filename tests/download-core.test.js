@@ -2,12 +2,52 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  dateStampFilename,
+  filenameForMode,
   mp4HandlerTypes,
+  patchMp4Durations,
   processInOrder,
+  randomHash,
   safeFilename,
   suggestFilename,
   validateDirectPlaylist
 } = require("../extension/download-core.js");
+
+function mp4Box(type, payloads) {
+  const size = 8 + payloads.reduce((total, payload) => total + payload.byteLength, 0);
+  const result = new Uint8Array(size);
+  const view = new DataView(result.buffer);
+  view.setUint32(0, size);
+  result.set([...type].map((character) => character.charCodeAt(0)), 4);
+  let offset = 8;
+  for (const payload of payloads) {
+    result.set(payload, offset);
+    offset += payload.byteLength;
+  }
+  return result;
+}
+
+function timingBox(type, timescale = 0) {
+  const body = new Uint8Array(type === "tkhd" ? 24 : 20);
+  const view = new DataView(body.buffer);
+  if (type === "tkhd") {
+    view.setUint32(20, 0xffffffff);
+  } else {
+    view.setUint32(12, timescale);
+    view.setUint32(16, 0xffffffff);
+  }
+  return mp4Box(type, [body]);
+}
+
+function uint32AfterType(data, type, offsetAfterType) {
+  const signature = [...type].map((character) => character.charCodeAt(0));
+  for (let index = 0; index <= data.byteLength - 4; index += 1) {
+    if (signature.every((value, part) => data[index + part] === value)) {
+      return new DataView(data.buffer, data.byteOffset, data.byteLength).getUint32(index + 4 + offsetAfterType);
+    }
+  }
+  throw new Error(`Missing ${type} box`);
+}
 
 function media(overrides = {}) {
   return {
@@ -47,6 +87,28 @@ test("sanitizes filenames and always returns one mp4 suffix", () => {
   assert.equal(safeFilename("../"), "downs-video.mp4");
   assert.equal(suggestFilename("A Show", "1080p"), "A Show - 1080p.mp4");
   assert.ok(safeFilename("x".repeat(500)).length <= 180);
+});
+
+test("supports suggested, local date stamp, and ten-character hash filenames", () => {
+  const localDate = new Date(2026, 8, 14, 20, 42);
+  assert.equal(dateStampFilename(localDate), "2026-09-14_20-42.mp4");
+  assert.equal(randomHash(() => 0), "aaaaaaaaaa");
+  assert.equal(filenameForMode("A Show", "720p", "suggested"), "A Show - 720p.mp4");
+  assert.equal(filenameForMode("ignored", "", "date", { date: localDate }), "2026-09-14_20-42.mp4");
+  assert.equal(filenameForMode("ignored", "", "hash", { random: () => 0 }), "aaaaaaaaaa.mp4");
+});
+
+test("replaces fragmented MP4 unknown-duration sentinels with finite track durations", () => {
+  const movieHeader = timingBox("mvhd", 90000);
+  const trackHeader = timingBox("tkhd");
+  const mediaHeader = timingBox("mdhd", 44100);
+  const init = mp4Box("moov", [movieHeader, mp4Box("trak", [trackHeader, mp4Box("mdia", [mediaHeader])])]);
+  const patched = patchMp4Durations(init, 12.5);
+
+  assert.equal(uint32AfterType(patched, "mvhd", 16), 1125000);
+  assert.equal(uint32AfterType(patched, "tkhd", 20), 1125000);
+  assert.equal(uint32AfterType(patched, "mdhd", 16), 551250);
+  assert.equal(uint32AfterType(init, "mvhd", 16), 0xffffffff, "source bytes stay unchanged");
 });
 
 test("processes concurrent producer results in source order", async () => {

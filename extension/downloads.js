@@ -6,6 +6,14 @@ const emptyEl = document.getElementById("empty");
 const summaryEl = document.getElementById("summary");
 const clearExportedButton = document.getElementById("clear-exported");
 const announcerEl = document.getElementById("announcer");
+const openSettingsButton = document.getElementById("open-settings");
+const settingsLayer = document.getElementById("settings-layer");
+const settingsScrim = document.getElementById("settings-scrim");
+const closeSettingsButton = document.getElementById("close-settings");
+const settingsDoneButton = document.getElementById("settings-done");
+const dateExampleEl = document.getElementById("date-example");
+const hashExampleEl = document.getElementById("hash-example");
+const filenameModeInputs = [...document.querySelectorAll('input[name="filename-mode"]')];
 
 const jobs = new Map();
 const memoryOutputs = new Map();
@@ -18,6 +26,7 @@ let activeJobId = "";
 let cancelRequested = false;
 let speedSample = null;
 let clearExportedPending = false;
+let priorSettingsFocus = null;
 
 function createElement(tag, className = "", text) {
   const element = document.createElement(tag);
@@ -90,7 +99,7 @@ function errorText(job) {
     return "The download stopped before it finished.";
   }
   if (job.error.segmentIndex && job.error.httpStatus) {
-    return `Segment ${job.error.segmentIndex} returned HTTP ${job.error.httpStatus}`;
+    return `Segment ${job.error.segmentIndex} · HTTP ${job.error.httpStatus}`;
   }
   return job.error.message || "The download failed.";
 }
@@ -154,7 +163,7 @@ function renderActions(job, row) {
       )
     );
   } else if (job.state === "failed") {
-    actions.append(actionButton("Retry", "retry", job.id));
+    actions.append(actionButton("Retry", "retry", job.id, "action-button primary"));
     actions.append(actionButton("Details", "details", job.id));
     actions.append(
       actionButton(
@@ -165,7 +174,7 @@ function renderActions(job, row) {
       )
     );
   } else {
-    actions.append(actionButton("Retry", "retry", job.id));
+    actions.append(actionButton("Retry", "retry", job.id, "action-button primary"));
     actions.append(
       actionButton(
         pendingDeletes.has(job.id) ? "Delete?" : "Delete",
@@ -196,10 +205,6 @@ function render() {
     if (job.exportedAt) {
       row.classList.add("is-saved");
     }
-    const mark = createElement("span", "status-mark");
-    mark.setAttribute("aria-hidden", "true");
-    row.append(mark);
-
     const copy = createElement("div", "job-copy");
     copy.append(createElement("h2", "job-name", job.filename));
     copy.append(createElement("p", "job-state", stateText(job)));
@@ -230,9 +235,9 @@ function render() {
   }
 
   const summary = globalThis.DownsJobs.summarizeJobs(ordered);
-  summaryEl.textContent = `${summary.active} active · ${summary.ready} ready to save`;
+  summaryEl.textContent = `${summary.active} active · ${summary.ready} ready`;
   clearExportedButton.hidden = !ordered.some((job) => job.state === "done" && job.exportedAt);
-  clearExportedButton.textContent = clearExportedPending ? "Clear exported?" : "Clear exported";
+  clearExportedButton.textContent = clearExportedPending ? "Clear saved?" : "Clear saved";
   emptyEl.hidden = ordered.length !== 0;
 }
 
@@ -647,6 +652,43 @@ async function clearExported() {
   announce(`${exported.length} exported download${exported.length === 1 ? "" : "s"} cleared.`);
 }
 
+async function loadSettings() {
+  const stored = await ext.storage.local.get(globalThis.DownsDownload.SETTINGS_KEY);
+  const storedMode = stored[globalThis.DownsDownload.SETTINGS_KEY]?.filenameMode;
+  const mode = globalThis.DownsDownload.FILENAME_MODES.has(storedMode) ? storedMode : "suggested";
+  for (const input of filenameModeInputs) {
+    input.checked = input.value === mode;
+  }
+  dateExampleEl.textContent = globalThis.DownsDownload.dateStampFilename(new Date());
+  hashExampleEl.textContent = `${globalThis.DownsDownload.randomHash()}.mp4`;
+}
+
+async function saveFilenameMode(mode) {
+  const filenameMode = globalThis.DownsDownload.FILENAME_MODES.has(mode) ? mode : "suggested";
+  await ext.storage.local.set({
+    [globalThis.DownsDownload.SETTINGS_KEY]: { filenameMode }
+  });
+  announce(`New downloads will use ${filenameMode === "suggested" ? "the suggested title" : filenameMode === "date" ? "a date stamp" : "a random hash"}.`);
+}
+
+async function openSettings() {
+  priorSettingsFocus = document.activeElement;
+  await loadSettings();
+  settingsLayer.hidden = false;
+  document.body.classList.add("settings-open");
+  document.body.style.overflow = "hidden";
+  const checked = filenameModeInputs.find((input) => input.checked);
+  (checked || closeSettingsButton).focus();
+}
+
+function closeSettings() {
+  settingsLayer.hidden = true;
+  document.body.classList.remove("settings-open");
+  document.body.style.overflow = "";
+  priorSettingsFocus?.focus();
+  priorSettingsFocus = null;
+}
+
 async function handleAction(action, job) {
   if (action === "cancel") {
     await cancelJob(job);
@@ -691,6 +733,18 @@ jobsEl.addEventListener("click", (event) => {
 });
 
 clearExportedButton.addEventListener("click", () => void clearExported());
+openSettingsButton.addEventListener("click", () => void openSettings());
+settingsScrim.addEventListener("click", closeSettings);
+closeSettingsButton.addEventListener("click", closeSettings);
+settingsDoneButton.addEventListener("click", closeSettings);
+for (const input of filenameModeInputs) {
+  input.addEventListener("change", () => {
+    if (input.checked) void saveFilenameMode(input.value);
+  });
+}
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !settingsLayer.hidden) closeSettings();
+});
 ext.downloads.onChanged.addListener(onDownloadChanged);
 ext.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") {
@@ -698,6 +752,10 @@ ext.storage.onChanged.addListener((changes, areaName) => {
   }
   let changed = false;
   for (const [key, change] of Object.entries(changes)) {
+    if (key === globalThis.DownsDownload.SETTINGS_KEY && !settingsLayer.hidden) {
+      void loadSettings();
+      continue;
+    }
     if (!globalThis.DownsJobs.isJobKey(key)) {
       continue;
     }

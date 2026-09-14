@@ -245,6 +245,10 @@ async function runJob(job) {
 
   activeSink = await createOutputSink(job.id);
   const muxer = createTransmuxer();
+  const playlistDuration = playlist.segments.reduce(
+    (total, segment) => total + (Number(segment.duration) || 0),
+    0
+  );
   let inputBytes = 0;
   let outputBytes = 0;
   let wroteInit = false;
@@ -292,8 +296,12 @@ async function runJob(job) {
         }
 
         if (!wroteInit && output.initSegment) {
-          await activeSink.write(output.initSegment);
-          outputBytes += output.initSegment.byteLength;
+          const finiteInit = globalThis.DownsDownload.patchMp4Durations(
+            output.initSegment,
+            playlistDuration
+          );
+          await activeSink.write(finiteInit);
+          outputBytes += finiteInit.byteLength;
           wroteInit = true;
         }
         if (output.data?.byteLength) {

@@ -12,7 +12,7 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.2 is experimental. The current **Milestone C** build keeps the bounded
+Downs 2.3 is experimental. The current **Milestone C** build keeps the bounded
 DIRECT download path from Milestone B and adds a persistent Downs-owned
 Downloads manager. The supported media shape is still finite, unencrypted,
 muxed MPEG-TS VOD containing H.264 video and AAC audio.
@@ -37,6 +37,10 @@ It can:
 - retain finished private MP4s until **Save to device** or **Delete** is chosen;
 - save again without rebuilding, retry failures from the current playlist, and
   remove partial output when a job is cancelled.
+- write finite movie and track durations into remuxed MP4 headers for players
+  that do not treat mux.js's unknown-duration sentinel correctly;
+- name new jobs from the suggested page title, a local date stamp, or a random
+  ten-character ID selected in **Settings**.
 
 The old Python/Tkinter + FFmpeg desktop application is preserved at the
 [`v1-python`](https://github.com/hanenashi/downs/tree/v1-python) tag.
@@ -65,6 +69,11 @@ of the bounded 30-job history.
 
 The popup's **Downloads** entry shows active and ready-to-save counts and opens
 the existing manager tab when one is already present.
+
+The manager's **Settings** pane controls names for new downloads. **Suggested
+title** preserves the existing behavior, **Date stamp** produces names such as
+`2026-09-14_20-42.mp4`, and **Random hash** produces names such as
+`k7m2p9x4qa.mp4`. Existing job names are not changed.
 
 ## Kiwi Android compatibility target
 

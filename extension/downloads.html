@@ -8,14 +8,16 @@
   </head>
   <body>
     <header class="manager-header">
-      <div class="manager-title">
+      <div class="manager-identity">
         <span class="brand">Downs</span>
-        <span class="title-divider" aria-hidden="true"></span>
         <h1>Downloads</h1>
       </div>
       <div class="manager-summary">
         <p id="summary" aria-live="polite">Loading downloads…</p>
-        <button id="clear-exported" class="text-action" type="button" hidden>Clear exported</button>
+        <div class="manager-tools">
+          <button id="open-settings" class="text-action" type="button">Settings</button>
+          <button id="clear-exported" class="text-action" type="button" hidden>Clear saved</button>
+        </div>
       </div>
     </header>
 
@@ -28,6 +30,35 @@
     </main>
 
     <p id="announcer" class="visually-hidden" aria-live="polite"></p>
+
+    <div id="settings-layer" class="settings-layer" hidden>
+      <button id="settings-scrim" class="settings-scrim" type="button" aria-label="Close settings"></button>
+      <aside class="settings-pane" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <header class="settings-header">
+          <h2 id="settings-title">Settings</h2>
+          <button id="close-settings" class="close-settings" type="button" aria-label="Close settings">
+            <span aria-hidden="true"></span>
+          </button>
+        </header>
+        <fieldset class="filename-settings">
+          <legend>File names</legend>
+          <label class="setting-choice">
+            <input type="radio" name="filename-mode" value="suggested">
+            <span>Suggested title</span>
+          </label>
+          <label class="setting-choice">
+            <input type="radio" name="filename-mode" value="date">
+            <span>Date stamp <small id="date-example">2026-09-14_20-42.mp4</small></span>
+          </label>
+          <label class="setting-choice">
+            <input type="radio" name="filename-mode" value="hash">
+            <span>Random hash <small id="hash-example">k7m2p9x4qa.mp4</small></span>
+          </label>
+        </fieldset>
+        <p class="settings-note">Applies to new downloads.</p>
+        <button id="settings-done" class="settings-done" type="button">Done</button>
+      </aside>
+    </div>
 
     <script src="job-core.js"></script>
     <script src="download-core.js"></script>
