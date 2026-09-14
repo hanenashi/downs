@@ -466,7 +466,13 @@ ext.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "get-links") {
       const [tab] = await ext.tabs.query({ active: true, currentWindow: true });
       const links = tab?.id === undefined ? [] : await getTabLinks(tab.id);
-      sendResponse({ ok: true, tabId: tab?.id, pageUrl: tab?.url || "", links });
+      sendResponse({
+        ok: true,
+        tabId: tab?.id,
+        pageUrl: tab?.url || "",
+        pageTitle: tab?.title || "",
+        links
+      });
       return;
     }
 

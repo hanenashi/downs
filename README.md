@@ -12,10 +12,12 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.7 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downs 2.8 is experimental. In addition to the bounded MPEG-TS path, persistent
 Downloads manager, request-context replay, and playback grouping, it can now
 assemble a conservative modern HLS layout: finite unencrypted fMP4/CMAF VOD
 with one separate H.264 video track and a user-selected AAC audio rendition.
+The 2.8 interface pass makes detected playbacks and supported download states
+clearer without reducing access to technical playlist details.
 
 It can:
 
@@ -28,6 +30,10 @@ It can:
 - identify MPEG-TS, fMP4/CMAF, `EXT-X-MAP`, and `EXT-X-KEY`;
 - distinguish ordinary AES-128 metadata from likely protected media;
 - report HTTP, timeout, HTML-response, and other useful failure reasons;
+- present detected playbacks with page titles and compact URL summaries, then
+  add parsed stream facts only after a playlist has actually been inspected;
+- keep complete playlist URLs in a collapsible **Technical details** section
+  with **Copy URL**, plus an optional URL-first stream-list setting;
 - open or focus a dedicated Downloads manager for supported media playlists;
 - fetch up to four MPEG-TS segments concurrently while consuming them in order;
 - remux MPEG-TS to fragmented MP4 in JavaScript with the bundled mux.js library;
@@ -62,9 +68,12 @@ The old Python/Tkinter + FFmpeg desktop application is preserved at the
 6. Open an HLS fixture or another authorized, non-DRM HLS page and start playback.
 7. Open Downs from the browser toolbar.
 
-The popup lists playlists detected on the current tab. Select one to fetch and
-inspect it. If it is a master playlist, select a variant to inspect that child
-media playlist. A **Download** button appears only when the selected media
+The popup lists playbacks detected on the current tab using the page title and
+a compact host/path summary. Select one to fetch and inspect it. Parsed status
+chips appear only after inspection. Expand **Technical details** for the full
+playlist URL, request facts, and **Copy URL**. If the playlist is a master,
+select a variant to inspect that child media playlist. A clear **Ready to
+download** block and **Download** button appear only when the selected media
 playlist passes the current DIRECT support checks.
 
 For a supported fMP4 master with separate audio, Downs initially selects that
@@ -81,7 +90,8 @@ to inspect any individual observed URL. Different CDN hosts and clearly
 different URL families remain separate.
 
 Choosing **Download** creates a queued job and opens the Downs Downloads tab.
-That tab owns processing, progress, cancellation, retry, and export. Downs
+A brief confirmation and highlighted job row make that handoff visible. The
+manager owns processing, progress, cancellation, retry, and export. Downs
 rechecks the current playlist before fetching its segments. When a job reaches
 **Done**, choose **Save to device** to invoke the browser save dialog. The
 private copy stays available for **Save again** until it is deleted or aged out
@@ -93,7 +103,9 @@ the existing manager tab when one is already present.
 The manager's **Settings** pane controls names for new downloads. **Suggested
 title** preserves the existing behavior, **Date stamp** produces names such as
 `2026-09-14_20-42.mp4`, and **Random hash** produces names such as
-`k7m2p9x4qa.mp4`. Existing job names are not changed.
+`k7m2p9x4qa.mp4`. Existing job names are not changed. **Show full URLs in stream
+list** restores URL-first popup rows for technical testing; full URLs remain
+available in playlist details regardless of that setting.
 
 ## Kiwi Android compatibility target
 
@@ -105,12 +117,13 @@ python3 tools/package_extensions.py
 ```
 
 Then use Kiwi's Extensions page in developer mode to load
-`dist/downs-chromium.zip`. Downs 2.7 has been verified on the physical Pixel for
-both the MPEG-TS path and a generated two-language fMP4 fixture. The Japanese
+`dist/downs-chromium.zip`. Downs 2.7's media paths were verified on the physical
+Pixel for both MPEG-TS and a generated two-language fMP4 fixture. The Japanese
 alternate rendition survived selection, assembly, device export, and native
-audio-fingerprint validation. Recheck this manual path after browser or
-extension changes because Kiwi may install a new development zip beside an
-older build rather than replacing it.
+audio-fingerprint validation. The 2.8 interface passed desktop Chromium QA at
+420px and 320px; its physical Kiwi pass remains intentionally pending while
+real-world download testing continues. Kiwi may install a new development zip
+beside an older build rather than replacing it.
 
 Kiwi Browser is discontinued and no longer receives engine maintenance. Downs
 therefore treats it as a specifically tested compatibility target, not a safe
@@ -249,8 +262,10 @@ extension packages.
 
 ## Direction
 
-The next DIRECT work is broader fMP4 compatibility sampling, larger-file stress
-testing, and Firefox verification. CAPTURE and DUMP remain later, separate
-strategies; neither is silently substituted for DIRECT.
+The immediate work is real-world download testing and physical Kiwi verification
+of the 2.8 hierarchy. Dark mode, editable preflight filenames, and broader
+manager-row interactions are separate UI passes. Broader fMP4 compatibility,
+larger-file stress testing, and Firefox verification remain next for DIRECT;
+CAPTURE and DUMP stay later, separate strategies.
 
 Small streams. Clear answers. No cathedral.

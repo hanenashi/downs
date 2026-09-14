@@ -1,14 +1,24 @@
 {
   "manifest_version": 3,
   "name": "Downs",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "description": "Detect HLS streams, assemble supported VOD as MP4, and manage private downloads.",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
   "permissions": ["declarativeNetRequest", "downloads", "storage", "tabs", "webRequest"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": {
     "scripts": ["hls-parser.js", "download-core.js", "job-core.js", "request-context.js", "background.js"]
   },
   "action": {
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    },
     "default_popup": "popup.html",
     "default_title": "Inspect HLS streams with Downs"
   },

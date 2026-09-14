@@ -19,6 +19,7 @@
           <button id="clear-exported" class="text-action" type="button" hidden>Clear saved</button>
         </div>
       </div>
+      <p id="manager-notice" class="manager-notice" role="status" hidden></p>
     </header>
 
     <main>
@@ -55,7 +56,17 @@
             <span>Random hash <small id="hash-example">k7m2p9x4qa.mp4</small></span>
           </label>
         </fieldset>
-        <p class="settings-note">Applies to new downloads.</p>
+        <fieldset class="interface-settings">
+          <legend>Interface</legend>
+          <label class="setting-choice">
+            <input id="show-full-urls" type="checkbox">
+            <span>
+              Show full URLs in stream list
+              <small>Technical URLs always remain available in playlist details.</small>
+            </span>
+          </label>
+        </fieldset>
+        <p class="settings-note">Filename choice applies to new downloads. Interface preferences apply immediately.</p>
         <button id="settings-done" class="settings-done" type="button">Done</button>
       </aside>
     </div>

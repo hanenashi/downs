@@ -4,6 +4,7 @@ const ext = globalThis.browser || globalThis.chrome;
 const jobsEl = document.getElementById("jobs");
 const emptyEl = document.getElementById("empty");
 const summaryEl = document.getElementById("summary");
+const managerNoticeEl = document.getElementById("manager-notice");
 const clearExportedButton = document.getElementById("clear-exported");
 const announcerEl = document.getElementById("announcer");
 const openSettingsButton = document.getElementById("open-settings");
@@ -14,6 +15,7 @@ const settingsDoneButton = document.getElementById("settings-done");
 const dateExampleEl = document.getElementById("date-example");
 const hashExampleEl = document.getElementById("hash-example");
 const filenameModeInputs = [...document.querySelectorAll('input[name="filename-mode"]')];
+const showFullUrlsInput = document.getElementById("show-full-urls");
 
 const jobs = new Map();
 const memoryOutputs = new Map();
@@ -28,6 +30,8 @@ let cancelRequested = false;
 let speedSample = null;
 let clearExportedPending = false;
 let priorSettingsFocus = null;
+let recentJobId = "";
+let managerNoticeTimer = 0;
 
 function createElement(tag, className = "", text) {
   const element = document.createElement(tag);
@@ -206,6 +210,9 @@ function render() {
   for (const job of ordered) {
     const row = createElement("article", "job-row");
     row.dataset.state = job.state;
+    if (job.id === recentJobId) {
+      row.classList.add("is-new");
+    }
     if (job.exportedAt) {
       row.classList.add("is-saved");
     }
@@ -250,6 +257,19 @@ function announce(message) {
   requestAnimationFrame(() => {
     announcerEl.textContent = message;
   });
+}
+
+function showAddedNotice(job) {
+  if (!job?.id) return;
+  recentJobId = job.id;
+  managerNoticeEl.textContent = `Added to Downloads · ${job.filename}`;
+  managerNoticeEl.hidden = false;
+  clearTimeout(managerNoticeTimer);
+  managerNoticeTimer = setTimeout(() => {
+    recentJobId = "";
+    managerNoticeEl.hidden = true;
+    render();
+  }, 2800);
 }
 
 async function persistJob(job, immediate = true) {
@@ -693,20 +713,28 @@ async function clearExported() {
 
 async function loadSettings() {
   const stored = await ext.storage.local.get(globalThis.DownsDownload.SETTINGS_KEY);
-  const storedMode = stored[globalThis.DownsDownload.SETTINGS_KEY]?.filenameMode;
+  const settings = stored[globalThis.DownsDownload.SETTINGS_KEY] || {};
+  const storedMode = settings.filenameMode;
   const mode = globalThis.DownsDownload.FILENAME_MODES.has(storedMode) ? storedMode : "suggested";
   for (const input of filenameModeInputs) {
     input.checked = input.value === mode;
   }
   dateExampleEl.textContent = globalThis.DownsDownload.dateStampFilename(new Date());
   hashExampleEl.textContent = `${globalThis.DownsDownload.randomHash()}.mp4`;
+  showFullUrlsInput.checked = Boolean(settings.showFullUrls);
+}
+
+async function saveSettings(patch) {
+  const stored = await ext.storage.local.get(globalThis.DownsDownload.SETTINGS_KEY);
+  const current = stored[globalThis.DownsDownload.SETTINGS_KEY] || {};
+  await ext.storage.local.set({
+    [globalThis.DownsDownload.SETTINGS_KEY]: { ...current, ...patch }
+  });
 }
 
 async function saveFilenameMode(mode) {
   const filenameMode = globalThis.DownsDownload.FILENAME_MODES.has(mode) ? mode : "suggested";
-  await ext.storage.local.set({
-    [globalThis.DownsDownload.SETTINGS_KEY]: { filenameMode }
-  });
+  await saveSettings({ filenameMode });
   announce(`New downloads will use ${filenameMode === "suggested" ? "the suggested title" : filenameMode === "date" ? "a date stamp" : "a random hash"}.`);
 }
 
@@ -756,6 +784,10 @@ async function loadJobs() {
   }
   await recoverJobs();
   await pruneHistory();
+  const newest = [...jobs.values()].sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0))[0];
+  if (newest && Date.now() - (Number(newest.createdAt) || 0) < 5000) {
+    showAddedNotice(newest);
+  }
   render();
   await pumpQueue();
 }
@@ -781,6 +813,11 @@ for (const input of filenameModeInputs) {
     if (input.checked) void saveFilenameMode(input.value);
   });
 }
+showFullUrlsInput.addEventListener("change", () => {
+  void saveSettings({ showFullUrls: showFullUrlsInput.checked }).then(() => {
+    announce(showFullUrlsInput.checked ? "Full playlist URLs will appear in stream rows." : "Stream rows will use compact summaries.");
+  });
+});
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !settingsLayer.hidden) closeSettings();
 });
@@ -790,6 +827,7 @@ ext.storage.onChanged.addListener((changes, areaName) => {
     return;
   }
   let changed = false;
+  let addedJob = null;
   for (const [key, change] of Object.entries(changes)) {
     if (key === globalThis.DownsDownload.SETTINGS_KEY && !settingsLayer.hidden) {
       void loadSettings();
@@ -801,11 +839,13 @@ ext.storage.onChanged.addListener((changes, areaName) => {
     changed = true;
     if (change.newValue?.id) {
       jobs.set(change.newValue.id, change.newValue);
+      if (!change.oldValue) addedJob = change.newValue;
     } else if (change.oldValue?.id) {
       jobs.delete(change.oldValue.id);
     }
   }
   if (changed) {
+    if (addedJob) showAddedNotice(addedJob);
     render();
     void pumpQueue();
   }

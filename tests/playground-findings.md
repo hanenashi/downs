@@ -131,3 +131,23 @@ Static Chromium UI checks at 420×640 and 320×640 confirmed the default choice,
 selection change, queued audio URL and label, and zero horizontal overflow or
 console errors. On Kiwi, the selector opened the native Android choice sheet,
 updated the explanatory copy to Japanese, and completed the same export path.
+
+## 2026-09-15 — Focused GUI hierarchy pass
+
+Downs 2.8 keeps the 2.7 media behavior and changes only presentation/state
+feedback. Detected rows default to the active page title plus a query-free
+host/path summary; parsed master/media facts appear only after explicit
+inspection. Complete URLs remain accessible through collapsed Technical details
+with Copy URL and through the persistent full-URL stream-list setting.
+
+Regular Playwright used the installed Chrome-for-Testing binary because the
+Browser plugin was unavailable. The popup passed its master → 1080p variant →
+alternate audio → Ready → Added flow at 420×640 and 320×640, including chip
+wrapping, URL copy, both compact/full URL modes, zero horizontal overflow, and
+no console errors. The real unpacked extension manager passed at 900px and
+360px: a newly stored job showed the confirmation banner and row highlight, and
+the full-URL preference persisted without replacing the selected filename mode.
+
+Physical Kiwi verification of the 2.8 hierarchy is intentionally pending while
+real-world download testing continues. The prior 2.7 media/export evidence still
+defines the current phone baseline.

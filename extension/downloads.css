@@ -85,6 +85,16 @@ h1 {
 
 .manager-tools { gap: 22px; }
 
+.manager-notice {
+  margin: 14px 0 0;
+  padding: 9px 11px;
+  color: var(--accent);
+  background: #edf7f0;
+  border-left: 3px solid var(--accent);
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
 .text-action,
 .quiet-action {
   padding: 5px 0;
@@ -106,6 +116,12 @@ h1 {
   gap: 0 24px;
   padding: 18px 0;
   border-bottom: 1px solid var(--line);
+}
+
+.job-row.is-new {
+  padding-inline: 14px;
+  background: #f2faf4;
+  box-shadow: inset 3px 0 var(--accent);
 }
 
 .job-copy { min-width: 0; }
@@ -298,7 +314,8 @@ h1 {
 .close-settings::before { transform: rotate(45deg); }
 .close-settings::after { transform: rotate(-45deg); }
 
-.filename-settings {
+.filename-settings,
+.interface-settings {
   display: grid;
   gap: 17px;
   padding: 21px 0 0;
@@ -306,10 +323,17 @@ h1 {
   border: 0;
 }
 
-.filename-settings legend {
+.filename-settings legend,
+.interface-settings legend {
   padding: 0 0 14px;
   font-size: 13px;
   font-weight: 700;
+}
+
+.interface-settings {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
 }
 
 .setting-choice {

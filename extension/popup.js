@@ -10,7 +10,10 @@ let detectedLinks = [];
 let selectedUrl = "";
 let activeInspection = null;
 let parentInspection = null;
+let activePageTitle = "";
+let showFullUrls = false;
 const expandedGroups = new Set();
+const inspectionSummaries = new Map();
 
 function createElement(tag, className, text) {
   const element = document.createElement(tag);
@@ -34,7 +37,10 @@ function shortTime(timestamp) {
   });
 }
 
-function streamName(link, index) {
+function streamName(link, index, primary = false) {
+  if (primary && activePageTitle) {
+    return activePageTitle;
+  }
   try {
     const url = new URL(link.url);
     const filename = decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || "");
@@ -42,6 +48,43 @@ function streamName(link, index) {
   } catch (_error) {
     return `HLS playlist ${index + 1}`;
   }
+}
+
+function compactUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    let path = url.pathname || "/";
+    try {
+      path = decodeURIComponent(path);
+    } catch (_error) {
+      // Preserve the encoded path when it contains a malformed escape.
+    }
+    return `HLS · ${url.hostname}${path === "/" ? "" : path}`;
+  } catch (_error) {
+    return "HLS playlist";
+  }
+}
+
+function countLabel(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function playlistSummary(playlist, variantLabel = "") {
+  if (playlist.kind === "master") {
+    const variantCount = playlist.variants?.length || 0;
+    const audioCount = playlist.audioRenditions?.length || 0;
+    const parts = ["Master", countLabel(variantCount, "variant")];
+    if (audioCount) {
+      parts.push(countLabel(audioCount, "audio track"));
+    }
+    return parts.join(" · ");
+  }
+
+  const parts = [];
+  if (variantLabel) parts.push(variantLabel);
+  parts.push(playlist.vod ? "VOD" : playlist.live ? "Live / event" : "Media playlist");
+  parts.push(containerLabel(playlist.segmented));
+  return parts.join(" · ");
 }
 
 function resolutionLabel(variant) {
@@ -102,7 +145,50 @@ function appendDefinition(list, label, value, className = "") {
   list.append(createElement("dd", className, value));
 }
 
-function streamRow(link, index) {
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch (_error) {
+      // Fall through to the extension-page-compatible copy path.
+    }
+  }
+
+  const field = document.createElement("textarea");
+  field.value = value;
+  field.setAttribute("readonly", "");
+  field.className = "copy-fallback";
+  document.body.append(field);
+  field.select();
+  const copied = document.execCommand("copy");
+  field.remove();
+  if (!copied) throw new Error("Copy was not available.");
+}
+
+function appendUrlDefinition(list, label, value) {
+  list.append(createElement("dt", "", label));
+  const row = createElement("dd", "technical-url-row");
+  row.append(createElement("span", "value-url", value));
+  const copy = createElement("button", "copy-url", "Copy URL");
+  copy.type = "button";
+  copy.addEventListener("click", async () => {
+    const original = copy.textContent;
+    try {
+      await copyText(value);
+      copy.textContent = "Copied";
+    } catch (_error) {
+      copy.textContent = "Copy failed";
+    }
+    setTimeout(() => {
+      copy.textContent = original;
+    }, 1400);
+  });
+  row.append(copy);
+  list.append(row);
+}
+
+function streamRow(link, index, { primary = false } = {}) {
     const button = createElement("button", "stream-row");
     button.type = "button";
     button.setAttribute("aria-expanded", String(link.url === selectedUrl));
@@ -111,8 +197,14 @@ function streamRow(link, index) {
     button.append(createElement("span", "stream-chevron"));
 
     const copy = createElement("span", "stream-copy");
-    copy.append(createElement("strong", "stream-name", streamName(link, index)));
-    copy.append(createElement("span", "stream-url", link.url));
+    copy.append(createElement("strong", "stream-name", streamName(link, index, primary)));
+    copy.append(
+      createElement(
+        "span",
+        showFullUrls ? "stream-url" : "stream-summary",
+        showFullUrls ? link.url : inspectionSummaries.get(link.url) || compactUrl(link.url)
+      )
+    );
     button.append(copy);
     button.append(createElement("time", "stream-time", shortTime(link.lastSeenAt || link.foundAt)));
 
@@ -149,12 +241,12 @@ function renderLinks() {
 
   groups.forEach((group, groupIndex) => {
     if (!group.related.length) {
-      linksEl.append(streamRow(group.primary, indexes.get(group.primary.url)));
+      linksEl.append(streamRow(group.primary, indexes.get(group.primary.url), { primary: true }));
       return;
     }
 
     const groupEl = createElement("section", "stream-group");
-    groupEl.append(streamRow(group.primary, indexes.get(group.primary.url)));
+    groupEl.append(streamRow(group.primary, indexes.get(group.primary.url), { primary: true }));
 
     const regionId = `related-streams-${groupIndex}`;
     const expanded = expandedGroups.has(group.id);
@@ -309,12 +401,84 @@ function renderRenditions(playlist) {
   return section;
 }
 
-function renderDownloadAction(playlist, response, variantLabel, context) {
+function renderStatusChips(playlist, context, eligibility) {
+  const chips = createElement("div", "status-chips");
+  const appendChip = (label, tone = "") => {
+    chips.append(createElement("span", `status-chip${tone ? ` ${tone}` : ""}`, label));
+  };
+
+  if (playlist.kind === "master") {
+    const variantCount = playlist.variants?.length || 0;
+    const audioCount = playlist.audioRenditions?.length || 0;
+    appendChip("Master");
+    appendChip(countLabel(variantCount, "variant"));
+    if (audioCount) {
+      appendChip(countLabel(audioCount, "audio track"));
+    }
+    return chips;
+  }
+
+  appendChip(playlist.vod ? "VOD" : playlist.live ? "Live / event" : "Media");
+  appendChip(containerLabel(playlist.segmented));
+  if (context.hasSeparateAudio) {
+    appendChip("Split A/V");
+    if ((context.audioRenditions || []).length > 1) {
+      appendChip(countLabel(context.audioRenditions.length, "audio track"));
+    }
+  } else if (playlist.segmented === "ts") {
+    appendChip("Muxed A/V");
+  }
+  if (eligibility) {
+    appendChip(eligibility.supported ? "Supported" : "Unsupported", eligibility.supported ? "good" : "warn");
+  }
+  return chips;
+}
+
+function renderTechnicalDetails(response, rootLink) {
+  const playlist = response.playlist;
+  const disclosure = createElement("details", "technical-details");
+  disclosure.append(createElement("summary", "", "Technical details"));
+
+  const details = createElement("dl", "inspection-grid");
+  appendUrlDefinition(details, "Playlist", response.fetch.finalUrl);
+  appendDefinition(
+    details,
+    "Kind",
+    playlist.kind === "master" ? "Master playlist" : "Media playlist"
+  );
+  appendDefinition(
+    details,
+    "Type",
+    playbackLabel(playlist),
+    playlist.live ? "warn" : playlist.vod ? "good" : ""
+  );
+  appendDefinition(details, "Segments", containerLabel(playlist.segmented));
+  appendDefinition(
+    details,
+    "Encryption",
+    encryptionLabel(playlist),
+    playlist.drm ? "bad" : playlist.encrypted ? "warn" : "good"
+  );
+  appendDefinition(details, "EXT-X-MAP", playlist.mapUrl ? "Present" : "Not present");
+  appendDefinition(details, "Response", `HTTP ${response.fetch.status}`, "technical");
+
+  if (rootLink?.requestContext?.hasCookie || rootLink?.requestContext?.hasAuthorization) {
+    const observations = [
+      rootLink.requestContext.hasCookie ? "cookie" : "",
+      rootLink.requestContext.hasAuthorization ? "authorization" : ""
+    ].filter(Boolean);
+    appendDefinition(details, "Auth seen", observations.join(" + "));
+  }
+
+  disclosure.append(details);
+  return disclosure;
+}
+
+function renderDownloadAction(playlist, response, variantLabel, context, eligibility) {
   if (playlist.kind !== "media") {
     return null;
   }
 
-  const eligibility = globalThis.DownsDownload.validateDirectPlaylist(playlist, context);
   const section = createElement("section", "download-action");
 
   const audioRenditions = context.hasSeparateAudio ? context.audioRenditions || [] : [];
@@ -352,6 +516,19 @@ function renderDownloadAction(playlist, response, variantLabel, context) {
     return section;
   }
 
+  const ready = createElement("div", "ready-state");
+  ready.append(createElement("strong", "", "Ready to download"));
+  ready.append(
+    createElement(
+      "span",
+      "",
+      context.hasSeparateAudio && context.audioLabel
+        ? `${eligibility.reason} · ${context.audioLabel}`
+        : eligibility.reason
+    )
+  );
+  section.append(ready);
+
   const button = createElement(
     "button",
     "download-button",
@@ -374,7 +551,7 @@ function renderDownloadAction(playlist, response, variantLabel, context) {
       if (!result?.ok) {
         throw new Error(result?.error?.message || "The download could not be added.");
       }
-      button.textContent = "Added to Downloads";
+      button.textContent = "Added to Downloads ✓";
     } catch (error) {
       button.disabled = false;
       button.textContent = variantLabel ? `Download ${variantLabel}` : "Download MP4";
@@ -402,6 +579,9 @@ function renderInspection(response, variantLabel = "", context = {}) {
   activeInspection = { response, variantLabel, context };
   const playlist = response.playlist;
   const rootLink = selectedLink();
+  const eligibility = playlist.kind === "media"
+    ? globalThis.DownsDownload.validateDirectPlaylist(playlist, context)
+    : null;
   inspectorEl.hidden = false;
   inspectorEl.textContent = "";
 
@@ -425,39 +605,8 @@ function renderInspection(response, variantLabel = "", context = {}) {
     head.append(back);
   }
   inspectorEl.append(head);
-
-  const details = createElement("dl", "inspection-grid");
-  appendDefinition(details, "Playlist", response.fetch.finalUrl, "value-url");
-  appendDefinition(
-    details,
-    "Kind",
-    playlist.kind === "master" ? "Master playlist" : "Media playlist"
-  );
-  appendDefinition(
-    details,
-    "Type",
-    playbackLabel(playlist),
-    playlist.live ? "warn" : playlist.vod ? "good" : ""
-  );
-  appendDefinition(details, "Segments", containerLabel(playlist.segmented));
-  appendDefinition(
-    details,
-    "Encryption",
-    encryptionLabel(playlist),
-    playlist.drm ? "bad" : playlist.encrypted ? "warn" : "good"
-  );
-  appendDefinition(details, "EXT-X-MAP", playlist.mapUrl ? "Present" : "Not present");
-  appendDefinition(details, "Response", `HTTP ${response.fetch.status}`, "technical");
-
-  if (rootLink?.requestContext?.hasCookie || rootLink?.requestContext?.hasAuthorization) {
-    const observations = [
-      rootLink.requestContext.hasCookie ? "cookie" : "",
-      rootLink.requestContext.hasAuthorization ? "authorization" : ""
-    ].filter(Boolean);
-    appendDefinition(details, "Auth seen", observations.join(" + "));
-  }
-
-  inspectorEl.append(details);
+  inspectorEl.append(renderStatusChips(playlist, context, eligibility));
+  inspectorEl.append(renderTechnicalDetails(response, rootLink));
 
   const variants = renderVariants(playlist);
   if (variants) {
@@ -487,7 +636,7 @@ function renderInspection(response, variantLabel = "", context = {}) {
     inspectorEl.append(createElement("p", "notice", warning));
   }
 
-  const downloadAction = renderDownloadAction(playlist, response, variantLabel, context);
+  const downloadAction = renderDownloadAction(playlist, response, variantLabel, context, eligibility);
   if (downloadAction) {
     inspectorEl.append(downloadAction);
   }
@@ -514,6 +663,10 @@ async function inspectUrl(url, variantLabel = "", context = {}) {
       renderError(response, url);
       return;
     }
+    const summary = playlistSummary(response.playlist, variantLabel);
+    inspectionSummaries.set(url, summary);
+    if (response.fetch.finalUrl) inspectionSummaries.set(response.fetch.finalUrl, summary);
+    renderLinks();
     renderInspection(response, variantLabel, context);
   } catch (error) {
     renderError(
@@ -530,6 +683,7 @@ async function loadLinks() {
   try {
     const response = await ext.runtime.sendMessage({ type: "get-links" });
     detectedLinks = response?.links || [];
+    activePageTitle = String(response?.pageTitle || "").trim();
 
     if (selectedUrl && !detectedLinks.some((link) => link.url === selectedUrl)) {
       selectedUrl = "";
@@ -561,14 +715,27 @@ async function loadLinks() {
 async function loadDownloadSummary() {
   try {
     const response = await ext.runtime.sendMessage({ type: "get-download-summary" });
-    const count = (Number(response?.active) || 0) + (Number(response?.ready) || 0);
-    downloadCountEl.textContent = count ? `(${count})` : "";
+    const active = Number(response?.active) || 0;
+    const ready = Number(response?.ready) || 0;
+    const parts = [];
+    if (active) parts.push(`${active} active`);
+    if (ready) parts.push(`${ready} ready to save`);
+    downloadCountEl.textContent = parts.join(" · ");
     downloadsButton.setAttribute(
       "aria-label",
-      count ? `Downloads, ${count} active or ready to save` : "Downloads"
+      parts.length ? `Downloads, ${parts.join(", ")}` : "Downloads"
     );
   } catch (_error) {
     downloadCountEl.textContent = "";
+  }
+}
+
+async function loadPopupSettings() {
+  try {
+    const stored = await ext.storage.local.get(globalThis.DownsDownload.SETTINGS_KEY);
+    showFullUrls = Boolean(stored[globalThis.DownsDownload.SETTINGS_KEY]?.showFullUrls);
+  } catch (_error) {
+    showFullUrls = false;
   }
 }
 
@@ -581,11 +748,17 @@ downloadsButton.addEventListener("click", async () => {
     downloadsButton.disabled = false;
   }
 });
-ext.storage.onChanged.addListener((_changes, areaName) => {
+ext.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "local") {
+    if (Object.hasOwn(changes, globalThis.DownsDownload.SETTINGS_KEY)) {
+      showFullUrls = Boolean(changes[globalThis.DownsDownload.SETTINGS_KEY]?.newValue?.showFullUrls);
+      renderLinks();
+    }
     void loadDownloadSummary();
   }
 });
 
-void loadLinks();
-void loadDownloadSummary();
+void (async () => {
+  await loadPopupSettings();
+  await Promise.all([loadLinks(), loadDownloadSummary()]);
+})();

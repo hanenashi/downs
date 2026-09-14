@@ -26,6 +26,22 @@ const requiredFiles = [
   "vendor/LICENSE.mux.js",
   "vendor/mux-mp4.min.js"
 ];
+const iconFiles = [
+  "icons/icon-16.png",
+  "icons/icon-32.png",
+  "icons/icon-48.png",
+  "icons/icon-128.png"
+];
+const manifestIcons = {
+  "16": "icons/icon-16.png",
+  "32": "icons/icon-32.png",
+  "48": "icons/icon-48.png",
+  "128": "icons/icon-128.png"
+};
+const actionIcons = {
+  "16": "icons/icon-16.png",
+  "32": "icons/icon-32.png"
+};
 
 for (const manifestName of manifests) {
   const raw = await readFile(path.join(extensionDir, manifestName), "utf8");
@@ -34,6 +50,8 @@ for (const manifestName of manifests) {
   assert.equal(manifest.manifest_version, 3, `${manifestName} must use Manifest V3`);
   assert.equal(manifest.name, "Downs", `${manifestName} must use the Downs product name`);
   assert.match(manifest.version, /^\d+(?:\.\d+){0,3}$/, `${manifestName} has an invalid version`);
+  assert.deepEqual(manifest.icons, manifestIcons, `${manifestName} must declare every extension icon size`);
+  assert.deepEqual(manifest.action?.default_icon, actionIcons, `${manifestName} must declare toolbar icons`);
   assert.ok(manifest.permissions.includes("webRequest"), `${manifestName} needs webRequest`);
   assert.ok(manifest.permissions.includes("storage"), `${manifestName} needs storage`);
   assert.ok(manifest.permissions.includes("downloads"), `${manifestName} needs downloads`);
@@ -48,7 +66,7 @@ for (const manifestName of manifests) {
   );
 }
 
-for (const filename of requiredFiles) {
+for (const filename of [...requiredFiles, ...iconFiles]) {
   await readFile(path.join(extensionDir, filename));
 }
 

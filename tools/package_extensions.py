@@ -27,6 +27,10 @@ FILES = [
     "popup.html",
     "popup.css",
     "popup.js",
+    "icons/icon-16.png",
+    "icons/icon-32.png",
+    "icons/icon-48.png",
+    "icons/icon-128.png",
     "vendor/mux-mp4.min.js",
     "vendor/LICENSE.mux.js",
 ]

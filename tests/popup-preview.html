@@ -11,13 +11,16 @@
     <header class="app-header">
       <div>
         <h1>Downs</h1>
-        <p>HLS detector &amp; playlist inspector</p>
+        <p>HLS inspector</p>
       </div>
       <button id="refresh" class="text-button" type="button">Refresh</button>
     </header>
 
     <button id="open-downloads" class="downloads-entry" type="button">
-      <span>Downloads <span id="download-count"></span></span>
+      <span class="downloads-copy">
+        <strong>Downloads</strong>
+        <span id="download-count" class="downloads-summary"></span>
+      </span>
       <span class="downloads-arrow" aria-hidden="true"></span>
     </button>
 
@@ -28,7 +31,7 @@
     </main>
 
     <footer>
-      <span>Downs 2.7</span>
+      <span>Downs 2.8</span>
     </footer>
 
     <script src="../extension/link-group-core.js"></script>
@@ -39,9 +42,18 @@
       const mediaUrl = "https://cdn.example.com/live/video/1080.m3u8";
       const now = Date.now();
       globalThis.previewMessages = [];
+      globalThis.previewSettings = {
+        filenameMode: "suggested",
+        showFullUrls: new URLSearchParams(location.search).get("urls") === "full"
+      };
 
       globalThis.chrome = {
         storage: {
+          local: {
+            async get(key) {
+              return key === "downs-settings" ? { "downs-settings": globalThis.previewSettings } : {};
+            }
+          },
           onChanged: { addListener() {} }
         },
         runtime: {
@@ -58,6 +70,7 @@
             if (message.type === "get-links") {
               return {
                 ok: true,
+                pageTitle: "Example Player · Episode 12",
                 links: [
                   {
                     url: masterUrl,
