@@ -117,6 +117,58 @@ h1 {
   display: none;
 }
 
+.stream-group {
+  border-bottom: 1px solid var(--line);
+}
+
+.stream-group > .stream-row {
+  border-bottom: 0;
+}
+
+.related-toggle {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 18px 9px 47px;
+  color: var(--accent);
+  text-align: left;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.related-toggle::before {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin: 0 9px 2px 1px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  content: "";
+  transform: rotate(-45deg);
+  transition: transform 140ms ease;
+}
+
+.related-toggle[aria-expanded="true"]::before {
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.related-toggle:hover {
+  color: var(--accent-hover);
+  background: #f8faf9;
+}
+
+.related-streams {
+  border-top: 1px solid var(--soft-line);
+}
+
+.related-streams .stream-row {
+  padding-left: 31px;
+  background: #fbfcfb;
+}
+
+.related-streams .stream-row:last-child {
+  border-bottom: 0;
+}
+
 .stream-row {
   display: grid;
   width: 100%;

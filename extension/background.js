@@ -9,12 +9,19 @@ if (!globalThis.DownsDownload && typeof importScripts === "function") {
 if (!globalThis.DownsJobs && typeof importScripts === "function") {
   importScripts("job-core.js");
 }
+if (!globalThis.DownsRequestContext && typeof importScripts === "function") {
+  importScripts("request-context.js");
+}
 
 const MAX_LINKS_PER_TAB = 50;
 const MAX_PLAYLIST_BYTES = 5 * 1024 * 1024;
 const PLAYLIST_TIMEOUT_MS = 20_000;
+const REQUEST_RULE_FIRST = 880_000;
+const REQUEST_RULE_LAST = 880_999;
 const tabQueues = new Map();
 const requestContexts = new Map();
+const activeRequestRules = new Set();
+let nextRequestRuleId = REQUEST_RULE_FIRST;
 const tabStorageArea = ext.storage.session || ext.storage.local;
 const jobStorageArea = ext.storage.local;
 
@@ -57,7 +64,6 @@ function looksLikeHls(details) {
 
 function summarizeRequestHeaders(details) {
   const summary = {
-    origin: "",
     referer: "",
     hasCookie: false,
     hasAuthorization: false
@@ -65,9 +71,7 @@ function summarizeRequestHeaders(details) {
 
   for (const header of details.requestHeaders || []) {
     const name = (header.name || "").toLowerCase();
-    if (name === "origin") {
-      summary.origin = header.value || "";
-    } else if (name === "referer") {
+    if (name === "referer") {
       summary.referer = header.value || "";
     } else if (name === "cookie") {
       summary.hasCookie = true;
@@ -76,7 +80,77 @@ function summarizeRequestHeaders(details) {
     }
   }
 
-  return summary;
+  return globalThis.DownsRequestContext.sanitize(summary);
+}
+
+async function clearStaleRequestRules() {
+  if (!ext.declarativeNetRequest?.getSessionRules) {
+    return;
+  }
+  const rules = await ext.declarativeNetRequest.getSessionRules();
+  const removeRuleIds = rules
+    .map((rule) => rule.id)
+    .filter((id) => id >= REQUEST_RULE_FIRST && id <= REQUEST_RULE_LAST);
+  if (removeRuleIds.length) {
+    await ext.declarativeNetRequest.updateSessionRules({ removeRuleIds });
+  }
+}
+
+const requestRulesReady = clearStaleRequestRules().catch(() => undefined);
+
+async function acquireRequestRule(rawUrl, rawContext) {
+  const api = ext.declarativeNetRequest;
+  if (!api?.updateSessionRules) {
+    return { leaseId: 0, replayed: false };
+  }
+  await requestRulesReady;
+  let leaseId = 0;
+  for (let count = 0; count <= REQUEST_RULE_LAST - REQUEST_RULE_FIRST; count += 1) {
+    const candidate = nextRequestRuleId;
+    nextRequestRuleId = candidate >= REQUEST_RULE_LAST ? REQUEST_RULE_FIRST : candidate + 1;
+    if (!activeRequestRules.has(candidate)) {
+      leaseId = candidate;
+      break;
+    }
+  }
+  if (!leaseId) {
+    throw new Error("Too many simultaneous request-context operations.");
+  }
+  const rule = globalThis.DownsRequestContext.createRefererRule(
+    leaseId,
+    normalizeUrl(rawUrl),
+    rawContext,
+    new URL(ext.runtime.getURL("")).hostname
+  );
+  if (!rule) {
+    return { leaseId: 0, replayed: false };
+  }
+  await api.updateSessionRules({ addRules: [rule] });
+  activeRequestRules.add(leaseId);
+  return { leaseId, replayed: true };
+}
+
+async function releaseRequestRule(leaseId) {
+  if (!activeRequestRules.delete(leaseId)) {
+    return;
+  }
+  await ext.declarativeNetRequest.updateSessionRules({ removeRuleIds: [leaseId] });
+}
+
+async function withRequestContext(url, context, operation) {
+  let lease = { leaseId: 0, replayed: false };
+  try {
+    lease = await acquireRequestRule(url, context);
+  } catch (_error) {
+    // A browser without usable session rules falls back to the ordinary request.
+  }
+  try {
+    return await operation(lease.replayed);
+  } finally {
+    if (lease.leaseId) {
+      await releaseRequestRule(lease.leaseId).catch(() => undefined);
+    }
+  }
 }
 
 function rememberRequestContext(details) {
@@ -183,7 +257,7 @@ function forgetRequest(details) {
   requestContexts.delete(details.requestId);
 }
 
-async function inspectPlaylist(rawUrl) {
+async function inspectPlaylist(rawUrl, requestContext = {}) {
   const url = normalizeUrl(rawUrl);
   if (!url) {
     return { ok: false, error: { code: "invalid-url", message: "This is not an HTTP or HTTPS URL." } };
@@ -193,14 +267,18 @@ async function inspectPlaylist(rawUrl) {
   const timeout = setTimeout(() => controller.abort(), PLAYLIST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(url, {
-      credentials: "include",
-      cache: "no-store",
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        Accept: "application/vnd.apple.mpegurl, application/x-mpegURL, audio/mpegurl, */*"
-      }
+    let refererReplayed = false;
+    const response = await withRequestContext(url, requestContext, async (replayed) => {
+      refererReplayed = replayed;
+      return fetch(url, {
+        credentials: "include",
+        cache: "no-store",
+        redirect: "follow",
+        signal: controller.signal,
+        headers: {
+          Accept: "application/vnd.apple.mpegurl, application/x-mpegURL, audio/mpegurl, */*"
+        }
+      });
     });
 
     const contentLength = Number(response.headers.get("content-length"));
@@ -223,7 +301,8 @@ async function inspectPlaylist(rawUrl) {
       status: response.status,
       statusText: response.statusText,
       finalUrl: response.url || url,
-      contentType: response.headers.get("content-type") || ""
+      contentType: response.headers.get("content-type") || "",
+      refererReplayed
     };
 
     if (!response.ok) {
@@ -272,7 +351,8 @@ function createJobId() {
 }
 
 async function startDownloadJob(message) {
-  const inspection = await inspectPlaylist(message.url);
+  const requestContext = globalThis.DownsRequestContext.sanitize(message.requestContext);
+  const inspection = await inspectPlaylist(message.url, requestContext);
   if (!inspection.ok) {
     return inspection;
   }
@@ -302,7 +382,8 @@ async function startDownloadJob(message) {
     ),
     variantLabel: message.variantLabel || "",
     hasSeparateAudio: Boolean(message.hasSeparateAudio),
-    supportSummary: eligibility.reason
+    supportSummary: eligibility.reason,
+    requestContext
   });
 
   await jobStorageArea.set({ [globalThis.DownsJobs.jobKey(id)]: job });
@@ -369,12 +450,23 @@ ext.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     }
 
     if (message?.type === "inspect-playlist") {
-      sendResponse(await inspectPlaylist(message.url));
+      sendResponse(await inspectPlaylist(message.url, message.requestContext));
       return;
     }
 
     if (message?.type === "start-download") {
       sendResponse(await startDownloadJob(message));
+      return;
+    }
+
+    if (message?.type === "acquire-request-context") {
+      sendResponse({ ok: true, ...(await acquireRequestRule(message.url, message.requestContext)) });
+      return;
+    }
+
+    if (message?.type === "release-request-context") {
+      await releaseRequestRule(Number(message.leaseId));
+      sendResponse({ ok: true });
       return;
     }
 

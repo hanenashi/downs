@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Downs",
-  "version": "2.3.0",
+  "version": "2.5.0",
   "description": "Detect HLS streams, build supported MPEG-TS VOD as MP4, and manage private downloads.",
-  "permissions": ["downloads", "storage", "tabs", "webRequest"],
+  "permissions": ["declarativeNetRequest", "downloads", "storage", "tabs", "webRequest"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": {
-    "scripts": ["hls-parser.js", "download-core.js", "job-core.js", "background.js"]
+    "scripts": ["hls-parser.js", "download-core.js", "job-core.js", "request-context.js", "background.js"]
   },
   "action": {
     "default_popup": "popup.html",

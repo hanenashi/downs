@@ -15,6 +15,11 @@
       <button id="refresh" class="text-button" type="button">Refresh</button>
     </header>
 
+    <button id="open-downloads" class="downloads-entry" type="button">
+      <span>Downloads <span id="download-count"></span></span>
+      <span class="downloads-arrow" aria-hidden="true"></span>
+    </button>
+
     <main>
       <p id="status" class="status" aria-live="polite">Looking for HLS traffic on this tab…</p>
       <section id="links" class="stream-list" aria-label="Detected streams"></section>
@@ -22,10 +27,10 @@
     </main>
 
     <footer>
-      <span>Small streams. Happier internet.</span>
-      <span>Downs 2.0</span>
+      <span>Downs 2.5</span>
     </footer>
 
+    <script src="../extension/link-group-core.js"></script>
     <script src="../extension/download-core.js"></script>
     <script>
       const masterUrl = "https://cdn.example.com/live/master.m3u8";
@@ -54,7 +59,27 @@
                     url: masterUrl,
                     foundAt: now - 25_000,
                     lastSeenAt: now - 25_000,
+                    pageUrl: "https://player.example.test/watch",
+                    initiator: "https://player.example.test",
                     requestContext: { hasCookie: true, hasAuthorization: false }
+                  },
+                  {
+                    url: mediaUrl,
+                    foundAt: now - 24_000,
+                    lastSeenAt: now - 4_000,
+                    pageUrl: "https://player.example.test/watch"
+                  },
+                  {
+                    url: "https://cdn.example.com/live/video/720.m3u8",
+                    foundAt: now - 23_000,
+                    lastSeenAt: now - 3_000,
+                    pageUrl: "https://player.example.test/watch"
+                  },
+                  {
+                    url: "https://cdn.example.com/live/audio/ja.m3u8",
+                    foundAt: now - 22_000,
+                    lastSeenAt: now - 2_000,
+                    pageUrl: "https://player.example.test/watch"
                   },
                   {
                     url: "https://video.example.net/hls/alternate-index.m3u8?token=preview",

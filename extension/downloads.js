@@ -21,6 +21,7 @@ const detailJobs = new Set();
 const pendingDeletes = new Set();
 const persistTimers = new Map();
 const exportDownloads = new Map();
+const activeRequestLeases = new Set();
 let activeWorker = null;
 let activeJobId = "";
 let cancelRequested = false;
@@ -361,6 +362,10 @@ async function pruneHistory() {
 function clearActiveWorker() {
   activeWorker?.terminate();
   activeWorker = null;
+  for (const leaseId of activeRequestLeases) {
+    void ext.runtime.sendMessage({ type: "release-request-context", leaseId });
+  }
+  activeRequestLeases.clear();
   activeJobId = "";
   cancelRequested = false;
   speedSample = null;
@@ -408,6 +413,37 @@ async function handleWorkerMessage(event) {
   const message = event.data;
   const job = jobs.get(activeJobId);
   if (!job) {
+    return;
+  }
+
+  if (message?.type === "acquire-request-context") {
+    let result;
+    try {
+      result = await ext.runtime.sendMessage({
+        type: "acquire-request-context",
+        url: message.url,
+        requestContext: job.requestContext || {}
+      });
+    } catch (_error) {
+      result = { leaseId: 0 };
+    }
+    if (result?.leaseId) {
+      activeRequestLeases.add(result.leaseId);
+    }
+    activeWorker?.postMessage({
+      type: "request-context-ready",
+      requestId: message.requestId,
+      leaseId: result?.leaseId || 0
+    });
+    return;
+  }
+
+  if (message?.type === "release-request-context") {
+    const leaseId = Number(message.leaseId) || 0;
+    activeRequestLeases.delete(leaseId);
+    if (leaseId) {
+      await ext.runtime.sendMessage({ type: "release-request-context", leaseId });
+    }
     return;
   }
 

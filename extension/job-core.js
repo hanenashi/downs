@@ -33,6 +33,7 @@
       hasSeparateAudio: Boolean(input.hasSeparateAudio),
       filename: input.filename,
       supportSummary: input.supportSummary || "",
+      requestContext: input.requestContext || {},
       state: "queued",
       attempt: 1,
       segmentCount: 0,

@@ -16,6 +16,8 @@ FILES = [
     "download-core.js",
     "download-worker.js",
     "job-core.js",
+    "link-group-core.js",
+    "request-context.js",
     "downloads.html",
     "downloads.css",
     "downloads.js",

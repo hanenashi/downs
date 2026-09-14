@@ -12,9 +12,10 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.3 is experimental. The current **Milestone C** build keeps the bounded
-DIRECT download path from Milestone B and adds a persistent Downs-owned
-Downloads manager. The supported media shape is still finite, unencrypted,
+Downs 2.5 is experimental. The current build keeps the bounded DIRECT download
+path, persistent Downloads manager, and narrowly scoped request-context replay,
+then groups related master, variant, audio, and token-refresh detections into a
+compact playback entry. The supported media shape is still finite, unencrypted,
 muxed MPEG-TS VOD containing H.264 video and AAC audio.
 
 It can:
@@ -41,6 +42,11 @@ It can:
   that do not treat mux.js's unknown-duration sentinel correctly;
 - name new jobs from the suggested page title, a local date stamp, or a random
   ten-character ID selected in **Settings**.
+- replay a detected player page's origin as Referer while inspecting or fetching
+  that stream, using temporary exact-URL browser rules that are removed after
+  each request.
+- collapse related playlist detections under one primary row while keeping every
+  observed URL available through **Show related playlists**.
 
 The old Python/Tkinter + FFmpeg desktop application is preserved at the
 [`v1-python`](https://github.com/hanenashi/downs/tree/v1-python) tag.
@@ -59,6 +65,12 @@ The popup lists playlists detected on the current tab. Select one to fetch and
 inspect it. If it is a master playlist, select a variant to inspect that child
 media playlist. A **Download** button appears only when the selected media
 playlist passes the current DIRECT support checks.
+
+Players often request a master plus several variants or audio playlists while
+switching quality. Downs groups conservative same-CDN URL families and short
+same-page startup bursts into one playback row. Expand **Show related playlists**
+to inspect any individual observed URL. Different CDN hosts and clearly
+different URL families remain separate.
 
 Choosing **Download** creates a queued job and opens the Downs Downloads tab.
 That tab owns processing, progress, cancellation, retry, and export. Downs
@@ -109,15 +121,18 @@ Use open or user-authorized streams for testing.
 
 Downs requests HTTP(S) host access because HLS playlists and their child
 renditions may be served from unrelated CDNs. It uses `webRequest` to observe
-playlist requests, `storage` to retain small per-tab metadata and persistent
-download job records, and `downloads` to export a completed MP4 through the
-browser only after the user chooses **Save to device**.
+playlist requests, temporary `declarativeNetRequest` session rules to replay a
+detected Referer origin on its own exact-URL requests, `storage` to retain small
+per-tab metadata and persistent download job records, and `downloads` to export
+a completed MP4 through the browser only after the user chooses **Save to
+device**.
 
 The extension does not store cookie or authorization values. It records only
-whether those headers were observed, plus non-secret request/page metadata used
-for diagnosis. Playlist bodies and media are processed locally and are not sent
-to Downs or any third-party service. Segment requests still go to the stream's
-own servers.
+whether those headers were observed. A Referer is reduced to its HTTP(S) origin
+before storage, so its path, query, fragment, and credentials are discarded.
+Downs never replays an observed Origin header. Playlist bodies and media are
+processed locally and are not sent to Downs or any third-party service. Segment
+requests still go to the stream's own servers.
 
 ## Known limits
 
@@ -127,8 +142,10 @@ own servers.
   audio-only playlists, and video-only playlists are not downloaded.
 - The current muxer path expects H.264 video and AAC audio in MPEG-TS. It remuxes
   rather than re-encoding.
-- Extension-context fetches can still fail when a site requires request
-  provenance or headers that extensions cannot reproduce.
+- Extension-context fetches can still fail when a site requires an exact page
+  path, custom headers, signed request values, or provenance that an extension
+  cannot safely reproduce. Downs deliberately replays only the page origin as
+  Referer; it never replays cookie or authorization header values.
 - Browsers without Origin Private File System support use an in-memory fallback
   capped at 256 MiB. Keep the Downloads tab open while such an output is waiting
   to be saved. Available storage quota can still limit larger files.
@@ -148,11 +165,39 @@ node --check extension/hls-parser.js
 node --check extension/download-core.js
 node --check extension/download-worker.js
 node --check extension/job-core.js
+node --check extension/link-group-core.js
+node --check extension/request-context.js
 node --check extension/downloads.js
 node --check extension/background.js
 node --check extension/popup.js
 node tools/validate-extension.mjs
 ```
+
+For repeatable browser/remux QA, start the development-only fixture page:
+
+```bash
+node tools/serve-fixtures.js
+```
+
+After exporting its three-segment MP4 from Downs, validate the complete file
+with native FFprobe/FFmpeg development tools:
+
+```bash
+node tools/validate-media.js \
+  --playlist tests/fixtures/mux-short.m3u8 \
+  /path/to/exported-file.mp4
+```
+
+The validator compares playlist and container durations, checks H.264/AAC stream
+shape and decoded dimensions, counts readable frames, checks decode timestamps,
+and performs a full decode.
+It is test tooling only; FFmpeg is not bundled or used by the extension. See
+[`tests/playground.md`](tests/playground.md) for the public-player findings
+matrix and interpretation rules.
+
+`http://127.0.0.1:8765/referer-page.html` is the deterministic request-context
+fixture. Its playlist returns HTTP 403 without the serving page's Referer origin
+and HTTP 200 with it.
 
 Build dependency-free Chromium and Firefox zip packages:
 
@@ -175,9 +220,9 @@ extension packages.
 
 ## Direction
 
-The next DIRECT work is compatibility hardening on physical Kiwi and Firefox,
-larger-file stress testing, and deciding which currently rejected layouts can
-be added without weakening failure clarity. CAPTURE and DUMP remain later,
-separate strategies; neither is silently substituted for DIRECT.
+The next DIRECT work is compatibility verification on physical Kiwi and
+Firefox, larger multi-variant grouping trials, and deciding whether fMP4/CMAF or
+separate audio/video is the next worthwhile format milestone. CAPTURE and DUMP
+remain later, separate strategies; neither is silently substituted for DIRECT.
 
 Small streams. Clear answers. No cathedral.

@@ -16,6 +16,8 @@ const requiredFiles = [
   "downloads.js",
   "hls-parser.js",
   "job-core.js",
+  "link-group-core.js",
+  "request-context.js",
   "popup.css",
   "popup.html",
   "popup.js",
@@ -33,6 +35,10 @@ for (const manifestName of manifests) {
   assert.ok(manifest.permissions.includes("webRequest"), `${manifestName} needs webRequest`);
   assert.ok(manifest.permissions.includes("storage"), `${manifestName} needs storage`);
   assert.ok(manifest.permissions.includes("downloads"), `${manifestName} needs downloads`);
+  assert.ok(
+    manifest.permissions.some((permission) => permission.startsWith("declarativeNetRequest")),
+    `${manifestName} needs temporary request-header rules`
+  );
   assert.deepEqual(
     manifest.host_permissions,
     ["http://*/*", "https://*/*"],
@@ -49,6 +55,7 @@ const shippedSource = await Promise.all(
 );
 const combinedSource = shippedSource.join("\n");
 const popupCss = await readFile(path.join(extensionDir, "popup.css"), "utf8");
+const popupHtml = await readFile(path.join(extensionDir, "popup.html"), "utf8");
 
 assert.doesNotMatch(combinedSource, /127\.0\.0\.1|localhost/i, "extension must not use a localhost bridge");
 assert.doesNotMatch(combinedSource, /send-to-downs/i, "legacy desktop feed messaging must stay removed");
@@ -62,6 +69,11 @@ assert.doesNotMatch(
   popupCss,
   /min-width:\s*min\([^;]*100vw/i,
   "popup minimum width must not collapse with Firefox's initial viewport"
+);
+assert.match(
+  popupHtml,
+  /<script src="link-group-core\.js"><\/script>[\s\S]*<script src="popup\.js"><\/script>/,
+  "popup must load grouping helpers before its controller"
 );
 
 console.log("Extension manifests and shipped files look valid.");

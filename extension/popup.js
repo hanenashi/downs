@@ -10,6 +10,7 @@ let detectedLinks = [];
 let selectedUrl = "";
 let activeInspection = null;
 let parentInspection = null;
+const expandedGroups = new Set();
 
 function createElement(tag, className, text) {
   const element = document.createElement(tag);
@@ -97,24 +98,7 @@ function appendDefinition(list, label, value, className = "") {
   list.append(createElement("dd", className, value));
 }
 
-function renderLinks() {
-  linksEl.textContent = "";
-
-  if (!detectedLinks.length) {
-    const empty = createElement("div", "empty-state");
-    empty.append(createElement("strong", "", "No HLS streams yet"));
-    empty.append(
-      createElement(
-        "p",
-        "",
-        "Start video playback on this tab, then refresh the popup."
-      )
-    );
-    linksEl.append(empty);
-    return;
-  }
-
-  detectedLinks.forEach((link, index) => {
+function streamRow(link, index) {
     const button = createElement("button", "stream-row");
     button.type = "button";
     button.setAttribute("aria-expanded", String(link.url === selectedUrl));
@@ -133,10 +117,70 @@ function renderLinks() {
       parentInspection = null;
       activeInspection = null;
       renderLinks();
-      inspectUrl(link.url);
+      inspectUrl(link.url, "", { requestContext: link.requestContext || {} });
     });
 
-    linksEl.append(button);
+  return button;
+}
+
+function renderLinks() {
+  linksEl.textContent = "";
+
+  if (!detectedLinks.length) {
+    const empty = createElement("div", "empty-state");
+    empty.append(createElement("strong", "", "No HLS streams yet"));
+    empty.append(
+      createElement(
+        "p",
+        "",
+        "Start video playback on this tab, then refresh the popup."
+      )
+    );
+    linksEl.append(empty);
+    return;
+  }
+
+  const indexes = new Map(detectedLinks.map((link, index) => [link.url, index]));
+  const groups = globalThis.DownsLinkGroups.groupLinks(detectedLinks);
+
+  groups.forEach((group, groupIndex) => {
+    if (!group.related.length) {
+      linksEl.append(streamRow(group.primary, indexes.get(group.primary.url)));
+      return;
+    }
+
+    const groupEl = createElement("section", "stream-group");
+    groupEl.append(streamRow(group.primary, indexes.get(group.primary.url)));
+
+    const regionId = `related-streams-${groupIndex}`;
+    const expanded = expandedGroups.has(group.id);
+    const toggle = createElement(
+      "button",
+      "related-toggle",
+      `${expanded ? "Hide" : "Show"} ${group.related.length} related playlist${group.related.length === 1 ? "" : "s"}`
+    );
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", String(expanded));
+    toggle.setAttribute("aria-controls", regionId);
+
+    const related = createElement("div", "related-streams");
+    related.id = regionId;
+    related.hidden = !expanded;
+    for (const link of group.related) {
+      related.append(streamRow(link, indexes.get(link.url)));
+    }
+
+    toggle.addEventListener("click", () => {
+      if (expandedGroups.has(group.id)) {
+        expandedGroups.delete(group.id);
+      } else {
+        expandedGroups.add(group.id);
+      }
+      renderLinks();
+    });
+
+    groupEl.append(toggle, related);
+    linksEl.append(groupEl);
   });
 }
 
@@ -215,7 +259,10 @@ function renderVariants(playlist) {
         variant.audioGroup &&
         playlist.audioRenditions.some((rendition) => rendition.groupId === variant.audioGroup)
       );
-      inspectUrl(variant.url, label, { hasSeparateAudio });
+      inspectUrl(variant.url, label, {
+        ...activeInspection.context,
+        hasSeparateAudio
+      });
     });
     list.append(button);
   });
@@ -280,7 +327,8 @@ function renderDownloadAction(playlist, response, variantLabel, context) {
         type: "start-download",
         url: response.fetch.finalUrl,
         variantLabel,
-        hasSeparateAudio: Boolean(context.hasSeparateAudio)
+        hasSeparateAudio: Boolean(context.hasSeparateAudio),
+        requestContext: context.requestContext || {}
       });
       if (!result?.ok) {
         throw new Error(result?.error?.message || "The download could not be added.");
@@ -414,7 +462,11 @@ async function inspectUrl(url, variantLabel = "", context = {}) {
   renderLoading(url);
 
   try {
-    const response = await ext.runtime.sendMessage({ type: "inspect-playlist", url });
+    const response = await ext.runtime.sendMessage({
+      type: "inspect-playlist",
+      url,
+      requestContext: context.requestContext || {}
+    });
     if (!response?.ok) {
       renderError(response, url);
       return;
@@ -445,8 +497,11 @@ async function loadLinks() {
 
     renderLinks();
     if (detectedLinks.length) {
+      const groupCount = globalThis.DownsLinkGroups.groupLinks(detectedLinks).length;
       setStatus(
-        `${detectedLinks.length} stream${detectedLinks.length === 1 ? "" : "s"} detected on this tab`
+        detectedLinks.length === groupCount
+          ? `${detectedLinks.length} stream${detectedLinks.length === 1 ? "" : "s"} detected on this tab`
+          : `${detectedLinks.length} playlists across ${groupCount} playback${groupCount === 1 ? "" : "s"}`
       );
     } else {
       setStatus("Waiting for HLS traffic on this tab");

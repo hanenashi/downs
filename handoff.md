@@ -1,5 +1,42 @@
 # Downs handoff — public HLS playground pass
 
+## Implementation update — Downs 2.5
+
+The grouping/deduplication milestone is implemented. The popup now presents a
+primary playlist per conservative playback group and collapses child variants,
+audio playlists, ABR switches, and same-path token refreshes behind **Show
+related playlists**. Every detected URL remains reachable and individually
+inspectable; no media eligibility gate changed.
+
+Grouping requires the same request host plus either a meaningful shared path or
+a short same-page startup burst. Different hosts stay separate, and generic
+single-directory matches do not merge after the burst window. Unit fixtures
+cover Mux-style ABR, switched sources, cross-host URLs, generic `/live` layouts,
+and token refreshes. The popup preview passed at 420×640 and 320×640 with no
+overflow or console errors, including expansion and child inspection.
+
+This grouping pass did not use ADB. The new layout and request-context API path
+still need quick manual confirmation in Kiwi and Firefox. After that, choose
+between fMP4/CMAF VOD and separate audio/video based on the public-playground
+frequency and implementation risk.
+
+## Previous implementation update — Downs 2.4
+
+The evidence-backed request-context milestone is implemented. Downs now records
+only the HTTP(S) origin of an observed Referer, passes that sanitized context
+through master/variant inspection and download jobs, and applies it to each
+extension fetch with a temporary exact-URL session rule. The rule is removed in
+`finally`; stale reserved rules are also cleared when the background worker
+starts. Cookie and authorization values remain observation booleans only, and
+Origin is not replayed.
+
+Deterministic coverage lives at `referer-page.html` /
+`referer-required.m3u8`. Desktop Chromium proved 403 without context, 200 with
+context, a complete three-segment download, and zero remaining temporary rules.
+This pass intentionally did not use ADB or the Pixel. The next milestone should
+be detection grouping/deduplication; Kiwi and Firefox remain manual compatibility
+checks for this new browser API path.
+
 ## Mission
 
 Downs is now far enough along that the next useful step is not more synthetic fixtures first. We need a few real public player pages that generate realistic HLS traffic in-browser so the extension can be exercised against something closer to normal sites.
@@ -183,6 +220,29 @@ Use them for manual/browser QA and discovery.
 Keep deterministic local/unit fixtures for parser/downloader tests.
 
 Public demos tell us what the wild looks like; local fixtures prove our code does not forget how to walk.
+
+### Media test ground
+
+Before drawing conclusions from player behavior, establish the local baseline:
+
+```bash
+node tools/serve-fixtures.js
+```
+
+Download and export the detected three-segment fixture through Downs, then run:
+
+```bash
+node tools/validate-media.js \
+  --playlist tests/fixtures/mux-short.m3u8 \
+  /path/to/exported-file.mp4
+```
+
+The development-only validator uses native FFprobe/FFmpeg to check finite and
+consistent durations, H.264/AAC stream shape, decoded dimensions and frames,
+non-regressing decode timestamps, and a complete error-free decode. It does not
+add FFmpeg or a localhost dependency to the extension. The repeatable protocol,
+public-player findings matrix, interpretation rules, and Kiwi-access command are
+in `tests/playground.md`.
 
 ---
 

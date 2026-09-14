@@ -1,6 +1,7 @@
 build/
 dist/
 node_modules/
+test-artifacts/
 __pycache__/
 *.py[cod]
 *.log

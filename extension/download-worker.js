@@ -15,6 +15,9 @@ const OUTPUT_PREFIX = "downs-output-";
 
 let activeController = null;
 let activeSink = null;
+let activeRequestContext = {};
+let nextContextRequestId = 1;
+const contextRequests = new Map();
 
 class DownloadError extends Error {
   constructor(code, message, detail = {}) {
@@ -40,6 +43,13 @@ function ensureNotCancelled(signal) {
 }
 
 async function fetchBytes(url, signal, kind, detail = {}) {
+  let leaseId = 0;
+  if (activeRequestContext.referer) {
+    const requestId = nextContextRequestId++;
+    const leasePromise = new Promise((resolve) => contextRequests.set(requestId, resolve));
+    post("acquire-request-context", { requestId, url });
+    leaseId = await leasePromise;
+  }
   let response;
   try {
     response = await fetch(url, {
@@ -57,6 +67,10 @@ async function fetchBytes(url, signal, kind, detail = {}) {
       `${kind} request failed: ${error?.message || "network error"}`,
       detail
     );
+  } finally {
+    if (leaseId) {
+      post("release-request-context", { leaseId });
+    }
   }
 
   if (!response.ok) {
@@ -226,6 +240,7 @@ async function runJob(job) {
   }
 
   activeController = new AbortController();
+  activeRequestContext = job.requestContext || {};
   const { signal } = activeController;
   post("progress", { phase: "playlist", message: "Checking playlist…", completed: 0, total: 0, bytes: 0 });
 
@@ -349,6 +364,13 @@ async function runJob(job) {
 self.addEventListener("message", (event) => {
   const message = event.data;
 
+  if (message?.type === "request-context-ready") {
+    const resolve = contextRequests.get(message.requestId);
+    contextRequests.delete(message.requestId);
+    resolve?.(Number(message.leaseId) || 0);
+    return;
+  }
+
   if (message?.type === "cancel") {
     activeController?.abort();
     return;
@@ -373,5 +395,6 @@ self.addEventListener("message", (event) => {
     })
     .finally(() => {
       activeController = null;
+      activeRequestContext = {};
     });
 });
