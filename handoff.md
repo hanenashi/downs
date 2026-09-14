@@ -1,174 +1,452 @@
-# Downs handoff — 2.7
+# Downs handoff — 2.7 GUI / feeling polish pass
 
-## Where the project stands
+## Mission
 
-Downs is a dependency-free Manifest V3 browser extension that detects HLS
-traffic in the active browser tab, inspects playlists, and locally assembles a
-strictly bounded set of VOD layouts into MP4. The normal path has no Python
-helper, localhost bridge, external FFmpeg, native companion, or upload service.
+Downs 2.7 is technically getting serious. The next pass should **not** chase another format milestone yet.
 
-The current version is **2.7.0**. It combines the 2.6 separate-track fMP4
-implementation with the 2.7 alternate-audio UI.
+The immediate goal is to make the current popup + Downloads manager feel less like an HLS developer inspector that happens to download, and more like a small downloader that happens to have an excellent inspector.
 
-## Supported DIRECT layouts
+Keep the current architecture, strict DIRECT gates, request-context handling, grouping, fMP4/audio selection, manager, OPFS retention, and export flow intact. This pass is mostly presentation, hierarchy, touch ergonomics, and feedback.
 
-### MPEG-TS VOD
+No cathedral.
 
-- finite playlist with `EXT-X-ENDLIST`;
-- muxed H.264 video and AAC audio;
-- no encryption, byte ranges, discontinuities, gaps, or iframe-only layout;
-- JavaScript remux through the bundled mux.js MP4 build;
-- finite MP4 movie and track durations patched into the output.
+---
 
-### Separate-track fMP4/CMAF VOD
+## Current functional baseline
 
-- one finite, clear H.264 video playlist and one finite, clear AAC audio
-  playlist;
-- exactly one full `EXT-X-MAP` per track;
-- no byte-range init or media segments, multiple maps, encryption,
-  discontinuities, gaps, or live/event input;
-- playlist durations must differ by no more than two seconds;
-- init metadata is checked for exactly one H.264 video track and one AAC audio
-  track before assembly;
-- audio track IDs are remapped when necessary and existing CMAF fragments are
-  interleaved by playlist time without re-encoding.
+Preserve all currently working behavior:
 
-The master playlist's default rendition is selected initially. In 2.7, an
-inspected video variant shows a compact **Audio** selector when its referenced
-group has more than one playable rendition URL. The explicit selection and
-human-readable label are stored in the job.
+- muxed MPEG-TS VOD DIRECT path;
+- separate H.264 + AAC fMP4/CMAF VOD path;
+- alternate audio selection;
+- persistent Downloads manager;
+- OPFS/private output retention;
+- Save to device / Save again / Delete;
+- retry/cancel/failure details;
+- conservative grouping of related playlists;
+- sanitized Referer-origin replay for exact extension fetches;
+- Chrome desktop + Kiwi Android behavior already verified;
+- Firefox package remains experimental.
 
-## Manager and request behavior
+Do not weaken any support gate merely to improve appearance.
 
-- supported downloads become persistent jobs in a dedicated Downloads tab;
-- OPFS is preferred, with a bounded 256 MiB memory fallback;
-- finished private output is retained for **Save to device** / **Save again**
-  until deletion or history pruning;
-- jobs support progress, cancel, retry, failure details, and a 30-job history;
-- filename settings offer suggested title, local date stamp, or a random
-  ten-character ID;
-- related master, variant, audio, ABR, and token-refresh detections are grouped
-  conservatively while every URL remains inspectable;
-- a sanitized player-page origin can be replayed temporarily as Referer for an
-  exact extension fetch; cookie and authorization values are never replayed;
-- temporary request-header rules are removed in `finally` and stale reserved
-  rules are cleared at worker startup.
+---
 
-## Deliberate limits
+## Overall UX direction
 
-Do not loosen gates merely to make one site pass. Downs still rejects:
-
-- live and event playlists;
-- DRM, SAMPLE-AES, and ordinary AES-128 encryption;
-- multiplexed fMP4;
-- byte-range media or init segments;
-- multiple init-map periods and discontinuities;
-- non-H.264 video or non-AAC audio;
-- split tracks whose playlist durations differ by more than two seconds.
-
-CAPTURE and DUMP remain separate future strategies. DIRECT must not silently
-fall back to either.
-
-## Verification evidence
-
-### Automated
-
-```bash
-node --test tests/*.test.js
-node --check extension/audio-core.js
-node --check extension/hls-parser.js
-node --check extension/download-core.js
-node --check extension/download-worker.js
-node --check extension/fmp4-core.js
-node --check extension/job-core.js
-node --check extension/popup.js
-node tools/validate-extension.mjs
-python3 tools/package_extensions.py
-unzip -t dist/downs-chromium.zip
-unzip -t dist/downs-firefox.zip
-```
-
-The 2.7 release pass has 50 passing Node tests. Packaging and both manifests
-validate successfully.
-
-### Deterministic media fixture
-
-```bash
-tools/generate-modern-fixture.sh
-node tools/serve-fixtures.js
-# open http://127.0.0.1:8765/modern-page.html
-```
-
-The generated 12-second fixture contains:
-
-- one 320×180 H.264 video track;
-- default English AAC at 440 Hz;
-- alternate Japanese AAC at 880 Hz.
-
-Desktop Chromium and Kiwi 137 on the Pixel both selected Japanese and exported
-556,365-byte MP4s. Both passed `tools/validate-media.js` at 12.021 seconds with
-360 video frames and a clean full decode. Their decoded-audio MD5 exactly
-matched the Japanese playlist (`6e54481556bf7c7f268781b65d2f7218`), while
-English differed (`d929d4078926b765897715cd11b1bffa`).
-
-The static popup interaction also passed at 420×640 and 320×640 with no
-horizontal overflow or relevant console errors. Kiwi used its native choice
-sheet and updated the download explanation after the selection.
-
-### Public exploratory evidence
-
-Shaka Angel One's 144p/default-English fMP4 pair produced a 1,721,844-byte MP4:
-60.000 seconds, H.264 192×144, stereo AAC 48 kHz, 1,500 frames, zero video or
-audio DTS regressions, and clean decode. Public media is not a CI dependency.
-
-Earlier hls.js, Wowza, Bitmovin, request-context, grouping, and Kiwi findings
-are recorded chronologically in `tests/playground-findings.md`.
-
-## Kiwi packaging note
-
-Build and beam the Chromium archive with:
-
-```bash
-python3 tools/package_extensions.py
-adb push dist/downs-chromium.zip \
-  /storage/emulated/0/Documents/codex/downs-chromium-2.7.0.zip
-```
-
-Kiwi may install each development zip beside the prior build under a new
-extension ID rather than upgrading it. Disable the older Downs copies during
-testing instead of assuming the newest one replaced them. At the end of the
-2.7 pass only the corrected 2.7 build was enabled; older 2.5, 2.6, and the
-superseded 2.7 test install were left disabled rather than deleted.
-
-## Best next pass
-
-Prefer evidence gathering before another format expansion:
-
-1. sample more clear fMP4 VOD masters and record which strict check rejects
-   each unsupported case;
-2. stress OPFS and cancellation with a substantially larger supported VOD;
-3. repeat the current popup, alternate-audio, manager, and export flow in the
-   experimental Firefox package, especially on macOS High Sierra;
-4. only then choose the next bounded format milestone, likely multiplexed fMP4
-   or a narrowly defined byte-range layout.
-
-Keep public sites exploratory and add deterministic fixtures for every behavior
-that becomes supported.
-
-## Continuation prompt
+Current feeling:
 
 ```text
-Read README.md, handoff.md, tests/playground.md, and
-tests/playground-findings.md before changing behavior.
+technical stream list
+→ inspect playlist
+→ inspect variant
+→ download
+```
 
-Downs 2.7 supports bounded muxed MPEG-TS VOD and separate H.264/AAC fMP4 VOD,
-including alternate audio selection. Preserve the working manager, request
-context, grouping, output-duration, and strict format-gate behavior.
+Target feeling:
 
-Perform a compatibility/stress pass against clear fMP4 VOD. Record exact
-playlist shapes and rejection reasons before changing support. Keep public
-players exploratory; any implementation must receive deterministic local/unit
-coverage and complete exported-media validation. Repeat meaningful UI or
-storage behavior in Chrome desktop and Kiwi where practical. Firefox remains
-experimental and needs explicit verification.
+```text
+found playable video
+→ obvious human-readable choice
+→ optional technical detail
+→ clear Ready state
+→ Download
+→ visible confirmation that the job went to Downloads
+```
+
+Technical information must remain available, but it should no longer dominate the first glance.
+
+---
+
+## 1. Make detected stream rows more human
+
+The primary row should prefer a useful human summary over the raw playlist URL.
+
+Current-ish pattern:
+
+```text
+Some title
+https://cdn.example.com/path/master.m3u8?token=...
+2m ago
+```
+
+Preferred pattern:
+
+```text
+Some title
+Master · 4 variants · 2 audio tracks
+2m ago
+```
+
+or, when the detected row is already a media playlist:
+
+```text
+Some title
+1080p · H.264/AAC · HLS
+2m ago
+```
+
+The exact secondary summary may depend on how much is known before inspection. Do not invent metadata that has not actually been parsed.
+
+Raw URL should remain available through:
+
+- expanded related-playlist details;
+- inspector details;
+- a compact technical/details section;
+- or another low-friction reveal.
+
+Do not remove diagnostic access.
+
+---
+
+## 2. Add subtle status chips in the inspector
+
+Where classification is already known, use compact subdued chips for important facts instead of forcing the user to read the full grid every time.
+
+Examples:
+
+```text
+[VOD] [fMP4] [Split A/V] [2 audio] [Supported]
+```
+
+or:
+
+```text
+[VOD] [MPEG-TS] [Muxed A/V] [Supported]
+```
+
+Rules:
+
+- keep them visually quiet;
+- avoid rainbow UI;
+- use border/background differences sparingly;
+- unsupported/warning states can reuse existing warning/error colors;
+- chips summarize existing truth; they are not a replacement for detailed diagnostics.
+
+The inspection grid should remain available below/behind them.
+
+---
+
+## 3. Give supported streams a stronger "Ready" moment
+
+When a selected media combination passes DIRECT validation, make that state obvious before the primary button.
+
+Example:
+
+```text
+Ready
+VOD · fMP4/CMAF · H.264 + Japanese AAC
+
+[ Download ]
+```
+
+or:
+
+```text
+✓ Ready to download
+MPEG-TS · muxed H.264/AAC
+
+[ Download ]
+```
+
+Use current support reason text where possible rather than inventing duplicate logic.
+
+For unsupported streams, preserve precise existing failure/rejection reasons.
+
+---
+
+## 4. Keep filename/audio controls visually attached to Download
+
+The Download action area should read as one coherent decision block.
+
+For fMP4 with alternate audio:
+
+```text
+Audio
+[ Japanese (default/etc.) ▼ ]
+
+Filename
+[ example-title.mp4          ]
+
+✓ Ready to download
+[ Download ]
+```
+
+Filename editing before the job starts is worth considering now that the manager persists jobs afterward.
+
+Important:
+
+- keep existing filename-mode settings (suggested/date/hash);
+- if an editable filename field is added, prefill it from the current mode;
+- job creation should store the final edited/sanitized filename;
+- do not make filename editing mandatory.
+
+If adding editable filename now complicates the pass disproportionately, leave it for a tiny follow-up rather than blocking the other polish.
+
+---
+
+## 5. Improve the Downloads entry summary
+
+A naked count is less useful now that the manager is a real part of the app.
+
+Prefer compact state-aware text such as:
+
+```text
+Downloads · 1 active · 2 ready
+```
+
+or:
+
+```text
+Downloads
+1 active · 2 ready to save
+```
+
+If there is nothing active/unexported, plain `Downloads` is fine.
+
+Do not overload the browser toolbar badge if it is already useful for detected-stream count.
+
+---
+
+## 6. Add explicit start confirmation
+
+After the user taps Download and the job is successfully queued, give a brief visible confirmation.
+
+Example button transition:
+
+```text
+Download
+→
+Added to Downloads ✓
+```
+
+for roughly a second or until the UI naturally changes.
+
+Avoid the feeling that the click vanished into another tab.
+
+Preferred behavior:
+
+- do not close the popup just for feedback;
+- if the Downloads manager is focused/opened by current behavior, still show an immediate success state before/while that happens where practical;
+- errors should remain explicit and inline.
+
+---
+
+## 7. Manager row ergonomics
+
+Keep the manager compact but make each job row feel more tappable on Kiwi.
+
+Suggested behavior:
+
+- entire non-button area of a row may open details / reveal metadata;
+- explicit action buttons remain explicit;
+- keep generous touch targets;
+- avoid dense icon-only controls;
+- continue to show filename, state, progress/size, and useful failure reason at a glance.
+
+Simple glyphs such as `↓`, `✓`, `!`, `×` are enough if icons are used. Do not introduce a heavy icon framework.
+
+---
+
+## 8. Dark mode
+
+Current popup CSS explicitly uses `color-scheme: light`. Add a restrained dark theme using `prefers-color-scheme: dark` if it can be done without destabilizing layouts.
+
+Requirements:
+
+- preserve current green accent identity;
+- ensure warning/error contrast remains readable;
+- inspector grids, chips, selected rows, inputs, manager rows, settings panel, and buttons all need coherent dark equivalents;
+- do not hardcode dozens of unrelated colors; prefer CSS variables;
+- reduced-motion behavior remains respected.
+
+Test at least:
+
+```text
+Chrome desktop light
+Chrome desktop dark
+Kiwi light
+Kiwi dark if device/browser theme exposes it
+```
+
+If Kiwi does not propagate `prefers-color-scheme` reliably, document the behavior rather than adding a brittle browser-specific hack.
+
+---
+
+## 9. Version footer cleanup
+
+The popup currently ends with `Downs 2.7`.
+
+That is useful during development but visually reads like bookkeeping.
+
+Preferred direction:
+
+- move version information into Settings/About or another low-priority location;
+- let normal popup content end with actual content rather than a version footer.
+
+During active development it is acceptable to retain a subtle version string temporarily if it materially helps distinguish side-by-side Kiwi installs. If kept, make it less visually prominent.
+
+---
+
+## 10. Preserve the Downs visual identity
+
+Do **not** redesign the extension from scratch.
+
+Keep:
+
+- white/neutral surface;
+- restrained green accent;
+- compact system typography;
+- simple separators;
+- minimal border radius;
+- information-dense but readable inspector;
+- no oversized cards;
+- no gradients;
+- no dashboard cosplay.
+
+The goal is refinement, not a rebrand.
+
+---
+
+## Responsive / Kiwi expectations
+
+The current popup already targets roughly 420px and shrinks to phone width. Preserve that.
+
+Manually verify at minimum:
+
+```text
+420 × 640
+320 × 640
+physical Kiwi popup
+```
+
+Check:
+
+- no horizontal overflow;
+- long titles truncate sensibly;
+- chips wrap cleanly;
+- audio selector remains usable;
+- filename field, if added, does not squeeze actions;
+- primary Download button remains easy to hit;
+- related-playlist disclosure still works;
+- manager rows remain touch friendly.
+
+---
+
+## Suggested implementation order
+
+### P1 — hierarchy cleanup
+
+1. human-readable secondary stream summaries;
+2. raw URL moved to technical/detail reveal;
+3. Ready state above Download;
+4. Downloads entry state summary.
+
+### P2 — compact visual language
+
+1. status chips;
+2. selected/expanded row polish;
+3. start-success confirmation;
+4. manager row touch ergonomics.
+
+### P3 — optional filename edit
+
+If low-risk:
+
+1. prefilled filename input in Download action block;
+2. sanitize on input/start;
+3. preserve filename-mode defaults;
+4. store final name on job creation.
+
+### P4 — theme / cleanup
+
+1. CSS variable cleanup;
+2. dark mode;
+3. version footer moved/de-emphasized;
+4. Chrome + Kiwi light/dark manual QA.
+
+---
+
+## Testing
+
+Do not let visual polish regress the working downloader.
+
+Run the full current automated suite and packaging checks after changes.
+
+Manual smoke path:
+
+```text
+1. open a page with a known supported stream
+2. verify grouped stream row is understandable without reading URL
+3. inspect master / variant
+4. confirm chips + Ready state reflect actual parser/support data
+5. switch audio rendition where available
+6. optionally edit filename if implemented
+7. start download
+8. observe Added to Downloads confirmation
+9. open manager
+10. verify progress, completion, Save to device, Save again, Delete
+11. repeat on Kiwi
+```
+
+Also manually inspect unsupported streams to ensure the prettier UI has not hidden the real rejection reason.
+
+---
+
+## Non-goals for this pass
+
+Do not combine this polish pass with:
+
+- multiplexed fMP4 support;
+- byte-range support;
+- live/event downloads;
+- broader codec support;
+- CAPTURE/DUMP;
+- pause/resume;
+- cloud sync;
+- media-library artwork;
+- giant settings expansion.
+
+Collect real-world evidence while testing, but keep this pass UI-focused.
+
+---
+
+# Beechan / Codex CLI prompt
+
+```text
+Read the whole repository first, especially README.md, handoff.md, popup.html/css/js, downloads.html/css/js, job-core.js, download-core.js, audio-core.js, tests, and the latest 2.7 fMP4/audio-selection work.
+
+Downs 2.7 is technically working well enough that the next task is GUI/feeling polish, not a new media-format milestone.
+
+Implement the polish pass in handoff.md while preserving every current DIRECT support gate and all working Chrome/Kiwi behavior.
+
+Primary goals:
+
+- make primary detected-stream rows human-readable instead of URL-first;
+- keep raw URLs available in technical/details views;
+- add subtle status chips for facts already known (VOD, MPEG-TS/fMP4, split/muxed A/V, audio count, supported);
+- make a clear Ready state appear before the Download button when validation passes;
+- keep audio and any filename controls visually attached to the Download action;
+- if low-risk, add an editable prefilled filename before starting a job while preserving existing suggested/date/hash modes;
+- make the Downloads entry show useful state such as active and ready-to-save counts, not just a naked total;
+- add a brief Added to Downloads success state after a job is queued;
+- improve manager row touch ergonomics without turning actions into icon soup;
+- add restrained dark mode using CSS variables and prefers-color-scheme where practical;
+- move or de-emphasize the popup version footer;
+- preserve the current Downs green/neutral visual identity and compact layout.
+
+Do not redesign the extension, weaken support checks, or broaden media support in this pass.
+
+Keep diagnostic detail available. Unsupported streams must still show precise reasons. Never invent metadata in the UI that has not actually been parsed.
+
+Manual QA must include 420x640, 320x640, desktop Chrome, and physical Kiwi. Check long titles, chip wrapping, audio selector, Download action layout, manager rows, and no horizontal overflow. Verify the full known supported download/export path still works after visual changes.
+
+After implementation:
+
+1. run all existing tests;
+2. run JS syntax and extension validation;
+3. package Chromium and Firefox builds;
+4. update README only where user-facing behavior changed;
+5. record any browser-specific dark-mode or popup quirks rather than hiding them with brittle hacks;
+6. commit the completed polish pass.
 ```
