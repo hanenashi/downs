@@ -1,225 +1,351 @@
-# Downs handoff — 2.8 focused GUI polish
+# Downs handoff — seek-safe MP4 pass + future companion seam
 
-## Current state
+## Mission
 
-Downs is a dependency-free Manifest V3 extension that detects HLS traffic,
-inspects playlists, and locally assembles a strictly bounded set of VOD layouts
-into MP4. The normal path has no localhost bridge, native companion, upload
-service, or external FFmpeg dependency.
+Downs is now good enough that the next pass should improve **finished-file playback quality**, not add another format.
 
-Version **2.8.0** is the first deliberately narrow interface-polish pass over
-the working 2.7 media core. It does not expand format support.
+Current real-world symptom:
 
-Preserve:
+- exported MP4s usually play fine in VLC;
+- starting playback or seeking to arbitrary positions can show a short black screen;
+- the picture can then reconstruct strangely around moving subjects before the full image settles;
+- once decoding catches up, playback is normal.
 
-- muxed MPEG-TS VOD DIRECT downloads;
-- separate H.264 video + AAC audio fMP4/CMAF VOD downloads;
-- alternate-audio selection;
-- strict encryption, layout, timeline, and codec gates;
-- conservative playback grouping and sanitized Referer-origin replay;
-- the persistent Downloads manager, OPFS retention, export, retry, cancel, and
-  failure-detail behavior.
+This strongly suggests a random-access / fragment-timeline / keyframe-indexing problem rather than ordinary pixel corruption.
 
-## What 2.8 changes
+The goal of this pass is to make the current JS DIRECT output more seek-friendly and better finalized, while preserving zero-reencode behavior.
 
-### Human-first stream rows
+At the same time, leave a clean seam for a future optional **native FFmpeg companion** on Android / Windows / macOS. Do not build the companion now.
 
-Primary detected rows now use the active page title when available. Their
-secondary line defaults to a query-free host/path summary such as:
+---
 
-```text
-Example Player · Episode 12
-HLS · cdn.example.com/live/master.m3u8
-```
+## Preserve the current architecture
 
-After a playlist is explicitly inspected, the row can show facts actually
-returned by the parser, for example:
+Keep working behavior intact:
 
-```text
-Master · 3 variants · 3 audio tracks
-```
+- muxed MPEG-TS VOD path via bundled mux.js;
+- separate H.264 + AAC fMP4/CMAF path;
+- alternate audio selection;
+- persistent Downloads manager;
+- OPFS retention and explicit Save to device;
+- request-context replay;
+- conservative grouping;
+- strict support gates;
+- no mandatory external process, helper app, localhost bridge, or cloud service.
 
-Do not auto-fetch every detected playlist merely to improve labels. Do not
-invent resolution, codec, variant, audio, support, or media-type metadata before
-inspection.
+Do not broaden media support in this pass.
 
-### Optional complete URLs
+---
 
-An inspected playlist has a collapsed **Technical details** disclosure. It
-contains the complete final URL, **Copy URL**, playlist/request facts, and auth
-presence indicators. Unsupported reasons remain visible outside the disclosure.
+## Main investigation: why arbitrary seeking is ugly
 
-Downloads → Settings also offers **Show full URLs in stream list**. It is stored
-beside the filename preference, takes effect immediately, and does not overwrite
-the filename mode. Full URLs remain available in Technical details regardless of
-the setting.
+Treat the visible VLC behavior as evidence, not as a foregone diagnosis.
 
-Long-press is not the only route to technical data: it is hard to discover,
-has no desktop equivalent, and can collide with Kiwi's context menu.
+Inspect the actual MP4 structure we currently emit and answer:
 
-### Truthful status hierarchy
+1. Are video fragment decode times (`tfdt`) preserved and monotonic?
+2. Are `trun` sample durations / composition offsets / flags valid after assembly?
+3. Do HLS segment boundaries actually begin on independently decodable video samples?
+4. Are sync / keyframe sample flags preserved correctly?
+5. Are we relying too heavily on accumulated `EXTINF` duration when real fragment timing says something else?
+6. Is the current fragmented MP4 structurally valid but simply poorly indexed for random seeking?
+7. Is mux.js producing streaming-friendly fragmented MP4 that needs a better finished-file finalization step?
 
-The inspector renders subdued chips from already-known parser/support results:
+Do not assume every playlist segment is a valid seek point.
 
-```text
-[VOD] [fMP4 / CMAF] [Split A/V] [3 audio tracks] [Supported]
-```
+If `#EXT-X-INDEPENDENT-SEGMENTS` is present, use it as useful evidence, not as a substitute for checking the actual video fragments when practical.
 
-The detailed grid is still available. Supported media receives a clear action
-block:
+---
 
-```text
-Ready to download
-VOD · fMP4 / CMAF · separate audio · Japanese
+## fMP4/CMAF path: prefer real fragment timing
 
-[ Download 1080p ]
-```
+The current split-track path interleaves fragments by accumulated playlist duration.
 
-The existing support result supplies this text. The popup does not create a
-second support policy.
+Improve this if practical by reading the fragments themselves:
 
-### Downloads handoff
+- parse `tfdt` base decode time;
+- understand each track timescale;
+- use actual decode timeline for ordering / sanity checks;
+- detect regressions, large gaps, or obviously incompatible timelines;
+- preserve original media timestamps whenever possible instead of inventing replacements.
 
-The popup entry reports exact useful state:
+The goal is not to rewrite the encoded samples. It is to produce a more truthful container around them.
+
+---
+
+## Keyframe / sync-sample awareness
+
+For video fragments, inspect enough `traf` / `trun` / sample-flag metadata to determine whether a fragment begins with a sync sample when possible.
+
+We want to know the difference between:
 
 ```text
-Downloads
-1 active · 2 ready to save
+fragment starts on IDR / sync frame
+→ good random-access boundary
 ```
 
-The popup already changed the action text while queueing, but focusing a new
-browser tab closes a popup before a success message can reliably be read. The
-manager therefore shows **Added to Downloads · filename.mp4** and briefly
-highlights the new row. This works both when the manager is newly opened and
-when an existing manager tab receives a new stored job.
-
-## Deliberately deferred
-
-Do not fold these into the 2.8 pass:
-
-- editable filename before queueing — filename generation currently belongs to
-  the background job-creation boundary and deserves its own tested override
-  path;
-- whole-row manager tapping — mobile action buttons are already 44px and a
-  row-wide target may cause accidental expansion while scrolling;
-- dark mode — convert both popup and manager colors coherently in a separate
-  pass after the hierarchy settles;
-- removal of the version footer — it remains useful while Kiwi installs
-  development archives beside older copies;
-- any new media format, byte-range, live/event, codec, CAPTURE, or DUMP support.
-
-## Current DIRECT layouts
-
-### MPEG-TS VOD
-
-- finite playlist with `EXT-X-ENDLIST`;
-- muxed H.264 video and AAC audio;
-- no encryption, byte ranges, discontinuities, gaps, or iframe-only layout;
-- JavaScript remux through the bundled mux.js MP4 build;
-- finite MP4 movie and track durations patched into output.
-
-### Separate-track fMP4/CMAF VOD
-
-- one finite clear H.264 video playlist and one finite clear AAC audio playlist;
-- exactly one full `EXT-X-MAP` per track;
-- no byte-range init/media segments, multiple maps, encryption,
-  discontinuities, gaps, or live/event input;
-- playlist durations differ by no more than two seconds;
-- initialization metadata verifies one H.264 video track and one AAC audio
-  track before assembly;
-- audio track IDs are remapped when required and fragments are interleaved by
-  playlist time without re-encoding.
-
-## Verification for the 2.8 slice
-
-The deterministic popup preview exercises:
-
-- default compact rows and parsed summaries;
-- master → 1080p variant inspection;
-- alternate-audio choice;
-- VOD/container/layout/audio/support chips;
-- collapsed and expanded Technical details;
-- complete URL copying;
-- Ready and Added states;
-- the full-URL row preference;
-- exact 420×640 and 320×640 viewport widths with no horizontal overflow.
-
-The real unpacked extension manager is exercised in Chrome-for-Testing at
-900px and 360px for:
-
-- new-job confirmation and row highlight;
-- settings drawer/sheet layout;
-- persistence of `showFullUrls` without losing the current filename mode;
-- zero horizontal overflow and no relevant console errors.
-
-Browser plugin support was unavailable for this pass, so regular Playwright was
-used with the already-installed Chrome-for-Testing binary. Screenshots and
-temporary QA scripts were kept outside the repository and removed after review.
-
-Run the release checks:
-
-```bash
-node --test tests/*.test.js
-node --check extension/audio-core.js
-node --check extension/hls-parser.js
-node --check extension/download-core.js
-node --check extension/download-worker.js
-node --check extension/fmp4-core.js
-node --check extension/job-core.js
-node --check extension/link-group-core.js
-node --check extension/request-context.js
-node --check extension/downloads.js
-node --check extension/background.js
-node --check extension/popup.js
-node tools/validate-extension.mjs
-python3 tools/package_extensions.py
-unzip -t dist/downs-chromium.zip
-unzip -t dist/downs-firefox.zip
-git diff --check
-```
-
-## Manual testing priority
-
-The next useful evidence is not another speculative feature:
-
-1. keep testing supported real-world downloads and record exact failures;
-2. load the 2.8 Chromium archive in physical Kiwi;
-3. verify compact rows, related-playlist expansion, Technical details, Copy URL,
-   audio selection, Ready state, manager confirmation, export, and the full-URL
-   preference;
-4. check that long page titles and signed URLs remain usable at phone width;
-5. retain precise rejection reasons for unsupported streams.
-
-After that evidence, take one bounded follow-up at a time. Dark mode is the
-best visual candidate; editable filenames should be a separate state-flow pass.
-
-## Kiwi packaging note
-
-```bash
-python3 tools/package_extensions.py
-adb push dist/downs-chromium.zip \
-  /storage/emulated/0/Documents/codex/downs-chromium-2.8.0.zip
-```
-
-Kiwi may install a development ZIP beside older Downs builds with a different
-extension ID. Disable old copies while testing rather than assuming an upgrade.
-
-## Continuation prompt
+and
 
 ```text
-Read README.md, handoff.md, tests/playground.md, and
-tests/playground-findings.md before changing behavior.
+fragment starts with predicted frames that need earlier references
+→ poor seek boundary
+```
 
-Downs 2.8 is a focused hierarchy pass over the working 2.7 media core. Preserve
-all current DIRECT support gates, request-context behavior, grouping, alternate
-audio, manager, storage, and export behavior.
+Do not pretend to fix a non-independent GOP by changing metadata alone.
 
-Prioritize real-world download evidence and physical Kiwi verification. Do not
-auto-fetch detected playlists just to label them and never invent unparsed
-metadata. Keep complete URLs available through Technical details, Copy URL, and
-the optional full-URL stream-list setting.
+If the encoded source genuinely requires earlier reference frames, keep the media untouched and avoid falsely advertising that boundary as independently seekable.
 
-Treat dark mode, editable preflight filenames, and broader manager-row
-interaction as separate future passes. Do not combine UI work with new media
-format support.
+---
+
+## Finished-file finalization
+
+Consider adding a bounded finalization step after all media has arrived.
+
+Conceptually:
+
+```text
+download / remux fragments
+        ↓
+inspect actual fragment timelines + sync information
+        ↓
+normalize only container metadata that is demonstrably wrong/incomplete
+        ↓
+build / repair seek-friendly movie metadata or fragment index
+        ↓
+finish MP4
+```
+
+The exact implementation is up to Codex after inspecting the files.
+
+Potentially relevant MP4 structures include:
+
+- `tfdt`
+- `trun`
+- `tfhd`
+- `mfhd`
+- `sidx`
+- movie / track durations
+- sync-sample or equivalent fragmented-MP4 random-access signaling
+
+Do not create decorative metadata that does not reflect the samples.
+
+Prefer a small correct finalizer over a full home-grown MP4 authoring library.
+
+---
+
+## MPEG-TS → MP4 path
+
+Inspect what mux.js emits for the current TS path as a **finished saved file**, not only whether VLC can play it linearly.
+
+If mux.js output is valid but weak for arbitrary seeking, see whether a lightweight post-finalization step can improve it without re-encoding.
+
+Do not replace mux.js just because a future FFmpeg path may exist.
+
+The lightweight JS path remains valuable for Kiwi/mobile and simple supported media.
+
+---
+
+## Very useful diagnostic experiment
+
+Before embedding any new heavy technology, compare one problematic Downs output with a native FFmpeg **stream-copy remux** during development.
+
+Example idea only; choose the exact command after inspecting the file:
+
+```text
+problematic Downs MP4
+        ↓
+FFmpeg remux, copy video/audio, no re-encode
+        ↓
+seek again in VLC
+```
+
+Interpretation:
+
+- if FFmpeg stream-copy output seeks cleanly, the encoded media is likely fine and our container/finalization is the problem;
+- if FFmpeg stream-copy still shows the same reconstruction behavior, the source GOP/random-access structure may itself be the limitation;
+- only re-encoding would then manufacture new keyframes, which is outside the normal DIRECT goal.
+
+FFmpeg may be used as a development comparison tool in this pass. It is not a runtime dependency.
+
+---
+
+## Future FFmpeg companion: leave plumbing space only
+
+Do **not** implement the companion yet.
+
+But avoid hard-wiring the job model so tightly to the current JS worker that a future native backend becomes painful.
+
+Think in terms of a portable processing job:
+
+```text
+Job
+  source playlist(s)
+  selected variant
+  selected audio rendition
+  sanitized request context
+  filename
+  processing mode
+  output intent
+```
+
+Today:
+
+```text
+processing mode = js-direct
+```
+
+Future possibilities:
+
+```text
+auto
+js-direct
+native-ffmpeg
+```
+
+A future Downs Companion could exist on:
+
+- Windows
+- macOS
+- Android
+- maybe Linux
+
+and use native FFmpeg for difficult remux/finalization jobs.
+
+Important product principle:
+
+> The extension must continue to work by itself for supported JS-direct cases.
+
+The companion should be an optional compatibility/power backend, never a mandatory dependency for ordinary Downs use.
+
+Do not add ffmpeg.wasm now unless a very strong reason appears. Native companion remains the more plausible heavyweight path later.
+
+---
+
+## UI / settings: minimal change
+
+Do not expose a confusing `mux.js vs FFmpeg` selector now.
+
+For this pass, keep current user-facing processing behavior essentially unchanged.
+
+If an internal processing-mode field is introduced, default it to something future-proof such as:
+
+```text
+auto
+```
+
+with current AUTO resolving to the existing JS path.
+
+No companion installation prompts yet.
+
+---
+
+## Success criteria
+
+A good result for this pass is:
+
+- linear playback remains correct;
+- arbitrary seeking in VLC becomes noticeably cleaner where the source permits it;
+- seeking no longer spends several seconds reconstructing a half-valid picture merely because our container metadata/indexing was weak;
+- audio/video sync remains correct;
+- no re-encoding is introduced;
+- current Kiwi-compatible JS path remains lightweight;
+- unsupported / non-independent media is reported truthfully rather than "fixed" with fake flags;
+- code structure leaves a reasonable backend seam for future native FFmpeg work.
+
+---
+
+## Testing philosophy for this pass
+
+Do not turn this into a testing cathedral.
+
+Use a few focused checks where they buy confidence:
+
+- keep existing unit tests green;
+- add small parser/helper tests only for new MP4 timing / sync logic that is easy to isolate;
+- use FFprobe/FFmpeg locally when useful to inspect one or two representative outputs;
+- avoid building a huge synthetic compatibility matrix before the user has tried real files.
+
+The user will do the important real-world playback / seeking tests.
+
+Manual evidence matters most here:
+
+```text
+start playback
+seek near beginning
+seek middle
+seek near end
+repeat several arbitrary seeks
+watch for black frames / partial reconstruction
+check audio sync
+```
+
+Try both:
+
+- one MPEG-TS-origin output;
+- one separate fMP4 video + audio output.
+
+If a change improves one path but regresses the other, keep them independently finalized rather than forcing one algorithm over both.
+
+---
+
+## Do not do in this pass
+
+- no new HLS formats;
+- no live/event support;
+- no encryption work;
+- no CAPTURE/DUMP work;
+- no FFmpeg companion implementation;
+- no ffmpeg.wasm bundle;
+- no native messaging bridge yet;
+- no re-encoding / forced keyframe generation;
+- no major UI redesign;
+- no excessive automated-browser test suite.
+
+---
+
+## Continuation prompt for Beechan / Codex CLI
+
+```text
+Read the current README.md, handoff.md, extension/fmp4-core.js,
+extension/download-worker.js, extension/download-core.js, the job model, and the
+current tests before changing anything.
+
+The next pass is seek-safe MP4 finalization, not new format support.
+
+Real-world symptom: Downs exports usually play linearly in VLC, but playback
+startup and arbitrary seeking can briefly show black frames followed by a
+partially reconstructed image that fills in around moving subjects until the
+picture stabilizes. Treat this as a likely random-access / fragment timing /
+keyframe-indexing issue, but verify rather than assuming.
+
+Investigate current MP4 output structure. Pay particular attention to tfdt,
+trun/tfhd sample timing and flags, sync/keyframe boundaries, mfhd sequence
+numbers, sidx or other random-access metadata, and the fact that the split-fMP4
+path currently interleaves using accumulated playlist EXTINF time.
+
+Prefer actual fragment decode timing over playlist approximation where practical.
+Preserve encoded H.264/AAC samples and do not re-encode. Do not fake sync flags
+for fragments that genuinely depend on earlier reference frames.
+
+If useful, compare one problematic exported MP4 with a native FFmpeg stream-copy
+remux as a development diagnostic. FFmpeg is allowed as a local test tool only;
+it must not become a runtime dependency in this pass.
+
+Keep mux.js / the current JS path as the lightweight normal backend. Add a small
+finished-file finalization layer if that is enough to improve seeking. Avoid
+building a full MP4 framework if a bounded metadata/index fix solves the issue.
+
+Also leave architectural room for a future optional Downs Companion using native
+FFmpeg on Android / Windows / macOS. Do not build it now. If you touch job or
+processing-mode plumbing, keep it backend-neutral enough that future modes such
+as auto / js-direct / native-ffmpeg can fit without rewriting the manager.
+Current AUTO should still resolve to the existing JS path.
+
+Testing should stay proportionate. Keep the existing suite green and add only
+small targeted tests for new pure MP4 helpers. Do not spend the pass building a
+large synthetic QA matrix; the user will do real-world VLC seeking tests.
+
+Preserve current format gates, manager behavior, OPFS retention, Kiwi
+compatibility, alternate audio selection, request-context behavior, and export
+flow.
 ```
