@@ -207,14 +207,37 @@ node --check extension/hls-parser.js
 node --check extension/download-core.js
 node --check extension/download-worker.js
 node --check extension/fmp4-core.js
+node --check extension/mp4-finalizer.js
+node --check extension/tar-core.js
 node --check extension/job-core.js
 node --check extension/link-group-core.js
 node --check extension/request-context.js
 node --check extension/downloads.js
 node --check extension/background.js
 node --check extension/popup.js
+node --check tools/replay-source-bundle.mjs
 node tools/validate-extension.mjs
 ```
+
+### Replay a source diagnostic bundle
+
+An exported `.downs-source.tar` can reproduce Downs' finalization path entirely
+offline:
+
+```bash
+node tools/replay-source-bundle.mjs /path/capture.downs-source.tar \
+  --output /tmp/replayed.mp4 \
+  --ffprobe
+```
+
+The tool checks TAR header integrity, rejects unsafe archive paths, verifies
+every media file against the manifest's size and SHA-256, then rebuilds the MP4
+with the same bundled mux.js and flat finalizer used by the extension. It
+supports the current MPEG-TS and separate-track fMP4 source-bundle modes, never
+contacts the original host, and removes its temporary extraction directory.
+It refuses to replace an existing output unless `--force` is supplied.
+`--ffprobe` is optional development diagnostics and requires a local FFprobe;
+FFprobe is not used for replay and is not bundled with Downs.
 
 For repeatable browser/remux QA, start the development-only fixture page:
 

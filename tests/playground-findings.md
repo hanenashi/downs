@@ -175,3 +175,11 @@ initial one-tick continuity gate rejected this valid input. Downs now tolerates
 at most 1 ms of timescale quantization, still far below one AAC packet or video
 frame; the captured source then produced a flat 90.09-second H.264 / 90.26-second
 AAC MP4 and passed full decode.
+
+The same real 18-segment diagnostic TAR was then replayed offline with
+`tools/replay-source-bundle.mjs`. TAR checksums, safe paths, declared sizes, and
+all media SHA-256 values were verified before the shared flat finalizer ran.
+The resulting 9,806,259-byte MP4 had SHA-256
+`27720c1e5fc47204512c58ac398a72859840c36f22a9c971779e53bc30112561`;
+FFprobe reported H.264 video at 90.090 seconds and AAC audio at 90.256 seconds.
+The workflow made no source-network requests and removed its extraction tree.

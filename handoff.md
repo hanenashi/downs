@@ -26,6 +26,14 @@ and the generated two-language split-fMP4 fixture became flat, fully decodable
 MP4s with finite per-track durations; a generated source bundle was accepted by
 standard `tar`. Physical Kiwi/VLC testing remains the important next gate.
 
+The repository now includes `tools/replay-source-bundle.mjs` for deterministic,
+offline reproduction from that diagnostic export. It validates TAR headers and
+paths plus every manifest size and SHA-256, supports both current TS and split
+fMP4 bundle layouts, and invokes the same bundled mux.js / flat-finalizer code
+as Downs. A real 18-segment, 90-second split-fMP4 capture replayed to a valid
+H.264/AAC MP4 with zero source-network access; FFprobe reported 90.090-second
+video and 90.256-second audio tracks.
+
 ---
 
 ## Mission
