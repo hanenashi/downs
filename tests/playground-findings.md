@@ -167,3 +167,11 @@ fixture likewise reported 12.000-second video and 12.021-second audio and passed
 full decode. The new exact-input diagnostic TAR helper was also accepted by the
 system `tar` reader. Real Kiwi exports and VLC seeking remain intentionally
 delegated to the user's live pass.
+
+A subsequent 90-second source bundle exposed ordinary AAC boundary rounding:
+mux.js rescaled segment starts into the 44.1 kHz audio clock with deltas between
+−26 and +21 ticks (under 0.6 ms), while video remained exactly continuous. The
+initial one-tick continuity gate rejected this valid input. Downs now tolerates
+at most 1 ms of timescale quantization, still far below one AAC packet or video
+frame; the captured source then produced a flat 90.09-second H.264 / 90.26-second
+AAC MP4 and passed full decode.

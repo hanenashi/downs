@@ -365,7 +365,8 @@
             throw new Error("Fragment sample sizes do not match its media-data payload.");
           }
           if (track.firstDecodeTime === null) track.firstDecodeTime = decodeTime;
-          if (track.sizes.length && Math.abs(decodeTime - track.decodeEnd) > 1) {
+          const timelineTolerance = Math.max(1, Math.ceil(track.timescale / 1000));
+          if (track.sizes.length && Math.abs(decodeTime - track.decodeEnd) > timelineTolerance) {
             throw new Error("Fragment decode timeline has a gap or regression.");
           }
           const writeOffset = outputOffset + writes.reduce((total, part) => total + part.byteLength, 0);

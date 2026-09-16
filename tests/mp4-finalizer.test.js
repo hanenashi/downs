@@ -29,9 +29,9 @@ function initialization() {
   return Fmp4.concat([box("ftyp", new Uint8Array([0x69, 0x73, 0x6f, 0x6d])), box("moov", mvhd, trak, box("mvex", trex))]);
 }
 
-function fragment() {
+function fragment(decodeTime = 0) {
   const tfhd = box("tfhd", fullBox(8, [[4, 1]]));
-  const tfdt = box("tfdt", fullBox(8));
+  const tfdt = box("tfdt", fullBox(8, [[4, decodeTime]]));
   const trunBody = fullBox(12, [[4, 2]]);
   trunBody[3] = 1;
   let moof = box("moof", box("mfhd", fullBox(8)), box("traf", tfhd, tfdt, box("trun", trunBody)));
@@ -54,6 +54,18 @@ test("turns supported movie fragments into flat sample tables", () => {
   assert.equal(types.includes("stts"), true);
   assert.equal(types.includes("co64"), true);
   assert.equal(types.includes("stss"), false, "all-sync video does not need stss");
+});
+
+test("accepts sub-millisecond boundary rounding but rejects real timeline gaps", () => {
+  const tolerant = new FlatMp4Builder(initialization());
+  let offset = tolerant.initialBytes.byteLength;
+  for (const part of tolerant.consume(fragment(0), offset)) offset += part.byteLength;
+  assert.doesNotThrow(() => tolerant.consume(fragment(2001), offset));
+
+  const strict = new FlatMp4Builder(initialization());
+  offset = strict.initialBytes.byteLength;
+  for (const part of strict.consume(fragment(0), offset)) offset += part.byteLength;
+  assert.throws(() => strict.consume(fragment(2002), offset), /gap or regression/);
 });
 
 test("run-length encodes adjacent timing values", () => {
