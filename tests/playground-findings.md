@@ -151,3 +151,19 @@ the full-URL preference persisted without replacing the selected filename mode.
 Physical Kiwi verification of the 2.8 hierarchy is intentionally pending while
 real-world download testing continues. The prior 2.7 media/export evidence still
 defines the current phone baseline.
+
+## 2026-09-16 — Flat finalization and source diagnostics
+
+A real 22:52 Downs MP4 contained 271 video fragments, 344 correctly flagged
+keyframes, monotonic timing apart from harmless one-tick rounding, and no global
+seek table. An FFmpeg fragmented stream-copy with `mfra` behaved much like the
+original in VLC; a flat stream-copy was clean and responsive. Both retained
+identical encoded audio/video hashes.
+
+The 2.9 writer consequently copies media payloads unchanged and emits ordinary
+flat MP4 sample tables. The existing 10-minute mux.js artifact passed FFprobe
+and full video decode after conversion. The generated separate H.264/AAC
+fixture likewise reported 12.000-second video and 12.021-second audio and passed
+full decode. The new exact-input diagnostic TAR helper was also accepted by the
+system `tar` reader. Real Kiwi exports and VLC seeking remain intentionally
+delegated to the user's live pass.

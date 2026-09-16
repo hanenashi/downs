@@ -226,6 +226,7 @@
     concat,
     handlerType,
     interleaveSegments,
+    makeBox,
     remapFragment,
     remapTrackMetadata,
     trackId,

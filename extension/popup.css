@@ -601,6 +601,24 @@ h1 {
   cursor: pointer;
 }
 
+.source-button {
+  width: 100%;
+  margin-top: 7px;
+  padding: 7px 10px;
+  color: #4d565d;
+  background: transparent;
+  border: 1px solid #b9c0c2;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.source-button:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.source-button:disabled { opacity: 0.55; }
+
 .download-button:hover:not(:disabled) {
   background: var(--accent-hover);
 }

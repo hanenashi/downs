@@ -34,6 +34,7 @@
       hasSeparateAudio: Boolean(input.hasSeparateAudio),
       audioLabel: input.audioLabel || "",
       supportMode: input.supportMode || "direct-ts-vod",
+      outputMode: input.outputMode === "source-bundle" ? "source-bundle" : "mp4",
       filename: input.filename,
       supportSummary: input.supportSummary || "",
       requestContext: input.requestContext || {},

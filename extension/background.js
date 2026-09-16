@@ -388,21 +388,24 @@ async function startDownloadJob(message) {
   const [sourceTab] = await ext.tabs.query({ active: true, currentWindow: true });
   const storedSettings = await jobStorageArea.get(globalThis.DownsDownload.SETTINGS_KEY);
   const filenameMode = storedSettings[globalThis.DownsDownload.SETTINGS_KEY]?.filenameMode || "suggested";
+  const outputMode = message.outputMode === "source-bundle" ? "source-bundle" : "mp4";
   const id = createJobId();
+  const suggestedFilename = globalThis.DownsDownload.filenameForMode(
+    sourceTab?.title || "downs-video",
+    message.variantLabel || "",
+    filenameMode
+  );
   const job = globalThis.DownsJobs.createJob({
     id,
     playlistUrl: inspection.fetch.finalUrl,
     audioPlaylistUrl: audioInspection?.fetch.finalUrl || "",
     sourcePageTitle: sourceTab?.title || "",
-    filename: globalThis.DownsDownload.filenameForMode(
-      sourceTab?.title || "downs-video",
-      message.variantLabel || "",
-      filenameMode
-    ),
+    filename: globalThis.DownsDownload.outputFilename(suggestedFilename, outputMode),
     variantLabel: message.variantLabel || "",
     hasSeparateAudio: Boolean(message.hasSeparateAudio),
     audioLabel: message.audioLabel || "",
     supportMode: eligibility.code,
+    outputMode,
     supportSummary: eligibility.reason,
     requestContext
   });

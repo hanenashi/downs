@@ -12,12 +12,12 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.8 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downs 2.9 is experimental. In addition to the bounded MPEG-TS path, persistent
 Downloads manager, request-context replay, and playback grouping, it can now
 assemble a conservative modern HLS layout: finite unencrypted fMP4/CMAF VOD
 with one separate H.264 video track and a user-selected AAC audio rendition.
-The 2.8 interface pass makes detected playbacks and supported download states
-clearer without reducing access to technical playlist details.
+Finished DIRECT output now uses conventional flat MP4 sample tables for fast,
+reliable seeking while preserving the source H.264/AAC samples.
 
 It can:
 
@@ -36,17 +36,19 @@ It can:
   with **Copy URL**, plus an optional URL-first stream-list setting;
 - open or focus a dedicated Downloads manager for supported media playlists;
 - fetch up to four MPEG-TS segments concurrently while consuming them in order;
-- remux MPEG-TS to fragmented MP4 in JavaScript with the bundled mux.js library;
+- remux MPEG-TS with bundled mux.js, then finalize its samples into a flat MP4;
 - combine separate H.264 and AAC fMP4 initialization metadata, remap colliding
-  track IDs, and interleave existing CMAF fragments without re-encoding;
+  track IDs, and finalize their samples without re-encoding;
+- build truthful timing, keyframe, sample-size, and 64-bit chunk-offset tables;
+- optionally save an exact source diagnostic TAR containing fetched segments,
+  local replay playlists, sizes, durations, and SHA-256 hashes;
 - stream output to browser-private storage when available, with a bounded
   in-memory fallback;
 - persist queued, active, finished, failed, and cancelled job metadata;
 - retain finished private MP4s until **Save to device** or **Delete** is chosen;
 - save again without rebuilding, retry failures from the current playlist, and
   remove partial output when a job is cancelled;
-- write finite movie and track durations into remuxed MP4 headers for players
-  that do not treat mux.js's unknown-duration sentinel correctly;
+- derive finite movie and per-track durations from actual fragment sample timing;
 - name new jobs from the suggested page title, a local date stamp, or a random
   ten-character ID selected in **Settings**;
 - replay a detected player page's origin as Referer while inspecting or fetching
@@ -76,12 +78,17 @@ select a variant to inspect that child media playlist. A clear **Ready to
 download** block and **Download** button appear only when the selected media
 playlist passes the current DIRECT support checks.
 
+The secondary **Source bundle** action creates an advanced `.downs-source.tar`
+diagnostic job instead of a finished MP4. It stores each fetched segment or
+fragment byte-for-byte, with locally replayable playlists and a manifest. It is
+intended for reproducible debugging and can be as large as the source media.
+
 For a supported fMP4 master with separate audio, Downs initially selects that
 variant's default audio rendition. When several matching renditions exist, a
 compact **Audio** selector appears in the inspected variant before download.
 The manager fetches the chosen playlist, verifies both tracks' simple VOD shape
-and actual H.264/AAC initialization metadata, then assembles their fragment
-timelines into one MP4.
+and actual H.264/AAC initialization metadata, then assembles their samples into
+one seekable MP4.
 
 Players often request a master plus several variants or audio playlists while
 switching quality. Downs groups conservative same-CDN URL families and short
@@ -121,8 +128,8 @@ Then use Kiwi's Extensions page in developer mode to load
 Pixel for both MPEG-TS and a generated two-language fMP4 fixture. The Japanese
 alternate rendition survived selection, assembly, device export, and native
 audio-fingerprint validation. The 2.8 interface passed desktop Chromium QA at
-420px and 320px; its physical Kiwi pass remains intentionally pending while
-real-world download testing continues. Kiwi may install a new development zip
+420px and 320px. Downs 2.9's flat finalizer and source bundle now need the next
+physical Kiwi pass. Kiwi may install a new development zip
 beside an older build rather than replacing it.
 
 Kiwi Browser is discontinued and no longer receives engine maintenance. Downs
@@ -157,7 +164,9 @@ whether those headers were observed. A Referer is reduced to its HTTP(S) origin
 before storage, so its path, query, fragment, and credentials are discarded.
 Downs never replays an observed Origin header. Playlist bodies and media are
 processed locally and are not sent to Downs or any third-party service. Segment
-requests still go to the stream's own servers.
+requests still go to the stream's own servers. Source bundles replace remote
+URLs with local paths and never contain cookies or authorization values, but
+they do contain the complete downloaded media and should be shared deliberately.
 
 ## Known limits
 
@@ -171,6 +180,9 @@ requests still go to the stream's own servers.
   layouts remain unsupported.
 - Both DIRECT paths preserve the encoded H.264/AAC media rather than
   re-encoding it.
+- Flat finalization accepts only the simple one-track-per-fragment layouts used
+  by the current DIRECT gates. Unexpected offsets or sample tables fail clearly
+  instead of producing a misleading file.
 - Extension-context fetches can still fail when a site requires an exact page
   path, custom headers, signed request values, or provenance that an extension
   cannot safely reproduce. Downs deliberately replays only the page origin as
@@ -262,10 +274,10 @@ extension packages.
 
 ## Direction
 
-The immediate work is real-world download testing and physical Kiwi verification
-of the 2.8 hierarchy. Dark mode, editable preflight filenames, and broader
-manager-row interactions are separate UI passes. Broader fMP4 compatibility,
-larger-file stress testing, and Firefox verification remain next for DIRECT;
-CAPTURE and DUMP stay later, separate strategies.
+The immediate work is real-world VLC/Kiwi testing of flat 2.9 MP4 output and the
+opt-in source diagnostic bundle. Dark mode, editable preflight filenames, and
+broader manager-row interactions remain separate UI passes. Broader fMP4
+compatibility, larger-file stress testing, and Firefox verification remain next
+for DIRECT; CAPTURE and DUMP stay later, separate strategies.
 
 Small streams. Clear answers. No cathedral.

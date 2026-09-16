@@ -200,6 +200,15 @@
     return suggestFilename(pageTitle, variantLabel);
   }
 
+  function sourceBundleFilename(value) {
+    const base = String(value || "").replace(/\.downs-source\.tar$/i, "");
+    return safeFilename(base).replace(/\.mp4$/i, ".downs-source.tar");
+  }
+
+  function outputFilename(value, outputMode = "mp4") {
+    return outputMode === "source-bundle" ? sourceBundleFilename(value) : safeFilename(value);
+  }
+
   function boxType(data, offset) {
     return String.fromCharCode(...data.subarray(offset + 4, offset + 8));
   }
@@ -347,10 +356,12 @@
     dateStampFilename,
     filenameForMode,
     mp4HandlerTypes,
+    outputFilename,
     patchMp4Durations,
     processInOrder,
     randomHash,
     safeFilename,
+    sourceBundleFilename,
     suggestFilename,
     validateSplitFmp4Playlists,
     validateDirectPlaylist

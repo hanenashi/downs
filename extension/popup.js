@@ -529,18 +529,24 @@ function renderDownloadAction(playlist, response, variantLabel, context, eligibi
   );
   section.append(ready);
 
-  const button = createElement(
-    "button",
-    "download-button",
-    variantLabel ? `Download ${variantLabel}` : "Download MP4"
-  );
-  button.type = "button";
-  button.addEventListener("click", async () => {
+  function makeDownloadButton(outputMode) {
+    const sourceBundle = outputMode === "source-bundle";
+    const idleLabel = sourceBundle
+      ? "Source bundle"
+      : variantLabel ? `Download ${variantLabel}` : "Download MP4";
+    const button = createElement(
+      "button",
+      sourceBundle ? "source-button" : "download-button",
+      idleLabel
+    );
+    button.type = "button";
+    button.addEventListener("click", async () => {
     button.disabled = true;
-    button.textContent = "Adding to Downloads…";
+    button.textContent = sourceBundle ? "Adding bundle…" : "Adding to Downloads…";
     try {
       const result = await ext.runtime.sendMessage({
         type: "start-download",
+        outputMode,
         url: response.fetch.finalUrl,
         variantLabel,
         hasSeparateAudio: Boolean(context.hasSeparateAudio),
@@ -554,22 +560,25 @@ function renderDownloadAction(playlist, response, variantLabel, context, eligibi
       button.textContent = "Added to Downloads ✓";
     } catch (error) {
       button.disabled = false;
-      button.textContent = variantLabel ? `Download ${variantLabel}` : "Download MP4";
+      button.textContent = idleLabel;
       const prior = section.querySelector(".download-error");
       prior?.remove();
       section.append(
         createElement("p", "download-error", error?.message || "The download could not be added.")
       );
     }
-  });
-  section.append(button);
+    });
+    return button;
+  }
+  section.append(makeDownloadButton("mp4"));
+  section.append(makeDownloadButton("source-bundle"));
   section.append(
     createElement(
       "p",
       "download-reason",
       context.hasSeparateAudio
-        ? `Adds video with ${context.audioLabel || "the default audio track"} to Downs Downloads for local assembly.`
-        : "Adds a job to Downs Downloads, where it remuxes locally and waits for you to save it."
+        ? `MP4 uses ${context.audioLabel || "the default audio track"}. Source bundle preserves exact fetched tracks for diagnostics.`
+        : "MP4 creates a seekable finished file. Source bundle preserves exact fetched segments for diagnostics."
     )
   );
   return section;

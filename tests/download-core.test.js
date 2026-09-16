@@ -5,11 +5,13 @@ const {
   dateStampFilename,
   filenameForMode,
   mp4HandlerTypes,
+  outputFilename,
   patchMp4Durations,
   processInOrder,
   randomHash,
   safeFilename,
   suggestFilename,
+  sourceBundleFilename,
   validateDirectPlaylist,
   validateSplitFmp4Playlists
 } = require("../extension/download-core.js");
@@ -138,6 +140,12 @@ test("supports suggested, local date stamp, and ten-character hash filenames", (
   assert.equal(filenameForMode("A Show", "720p", "suggested"), "A Show - 720p.mp4");
   assert.equal(filenameForMode("ignored", "", "date", { date: localDate }), "2026-09-14_20-42.mp4");
   assert.equal(filenameForMode("ignored", "", "hash", { random: () => 0 }), "aaaaaaaaaa.mp4");
+});
+
+test("uses a safe diagnostic TAR suffix for source bundles", () => {
+  assert.equal(sourceBundleFilename("A Show.mp4"), "A Show.downs-source.tar");
+  assert.equal(outputFilename("A Show.downs-source.tar", "source-bundle"), "A Show.downs-source.tar");
+  assert.equal(outputFilename("A Show", "mp4"), "A Show.mp4");
 });
 
 test("replaces fragmented MP4 unknown-duration sentinels with finite track durations", () => {

@@ -17,6 +17,8 @@ FILES = [
     "download-core.js",
     "download-worker.js",
     "fmp4-core.js",
+    "mp4-finalizer.js",
+    "tar-core.js",
     "job-core.js",
     "link-group-core.js",
     "request-context.js",

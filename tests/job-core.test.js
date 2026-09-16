@@ -28,6 +28,17 @@ test("creates a persistent queued job without media bytes", () => {
   assert.equal(job.filename, "one.mp4");
   assert.equal(jobKey(job.id), "download-job:one");
   assert.equal("segments" in job, false);
+  assert.equal(job.outputMode, "mp4");
+});
+
+test("marks source diagnostic jobs explicitly", () => {
+  const job = createJob({
+    id: "source",
+    playlistUrl: "https://example.com/source.m3u8",
+    filename: "source.downs-source.tar",
+    outputMode: "source-bundle"
+  }, 100);
+  assert.equal(job.outputMode, "source-bundle");
 });
 
 test("finished jobs retain private output metadata independently of export", () => {

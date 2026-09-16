@@ -70,7 +70,7 @@ function stateText(job) {
     return job.segmentCount ? `Downloading · ${percentFor(job)}%` : "Downloading…";
   }
   if (job.state === "remuxing") {
-    return "Remuxing…";
+    return job.outputMode === "source-bundle" ? "Finalizing bundle…" : "Finalizing MP4…";
   }
   if (job.state === "done") {
     return `${job.exportedAt ? "Saved" : "Done"} · ${formatBytes(job.outputSize)}`;
@@ -135,6 +135,7 @@ function renderDetails(job, row) {
   if (job.outputStorage) {
     entries.push(["Private copy", job.outputStorage === "opfs" ? "Retained by Downs" : "Memory only — keep this page open"]);
   }
+  entries.push(["Output", job.outputMode === "source-bundle" ? "Source diagnostic bundle" : "Seekable MP4"]);
   for (const [label, value] of entries) {
     const detail = createElement("div", "detail-row");
     detail.append(createElement("span", "detail-label", `${label}:`));
@@ -296,7 +297,8 @@ async function persistJob(job, immediate = true) {
 }
 
 function outputName(jobId) {
-  return `downs-output-${jobId}.mp4`;
+  const job = jobs.get(jobId);
+  return `downs-output-${jobId}.${job?.outputMode === "source-bundle" ? "tar" : "mp4"}`;
 }
 
 async function removeOutput(job) {
@@ -611,7 +613,7 @@ async function outputFile(job) {
   if (job.outputStorage === "memory") {
     const file = memoryOutputs.get(job.id);
     if (!file) {
-      throw new Error("The memory-only private copy is no longer available. Retry to rebuild it.");
+      throw new Error("The memory-only private output is no longer available. Retry to rebuild it.");
     }
     return file;
   }
@@ -620,7 +622,7 @@ async function outputFile(job) {
     const handle = await root.getFileHandle(job.outputKey);
     return handle.getFile();
   }
-  throw new Error("The private MP4 is no longer available. Retry to rebuild it.");
+  throw new Error("The private output is no longer available. Retry to rebuild it.");
 }
 
 async function finishExport(downloadId, state, browserError = "") {
@@ -670,7 +672,7 @@ async function saveJob(job) {
     objectUrl = URL.createObjectURL(file);
     const downloadId = await ext.downloads.download({
       url: objectUrl,
-      filename: globalThis.DownsDownload.safeFilename(job.filename),
+      filename: globalThis.DownsDownload.outputFilename(job.filename, job.outputMode),
       conflictAction: "uniquify",
       saveAs: true
     });

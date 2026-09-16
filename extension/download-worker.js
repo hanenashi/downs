@@ -4,6 +4,8 @@ importScripts(
   "hls-parser.js",
   "download-core.js",
   "fmp4-core.js",
+  "mp4-finalizer.js",
+  "tar-core.js",
   "vendor/mux-mp4.min.js"
 );
 
@@ -19,6 +21,10 @@ let activeSink = null;
 let activeRequestContext = {};
 let nextContextRequestId = 1;
 const contextRequests = new Map();
+
+function bytes(value) {
+  return value instanceof Uint8Array ? value : new Uint8Array(value || 0);
+}
 
 class DownloadError extends Error {
   constructor(code, message, detail = {}) {
@@ -105,11 +111,13 @@ async function fetchBytes(url, signal, kind, detail = {}) {
 async function fetchPlaylist(url, signal) {
   const response = await fetchBytes(url, signal, "Playlist");
   const text = new TextDecoder().decode(response.bytes);
-  return globalThis.DownsHls.parsePlaylist(text, response.finalUrl);
+  const playlist = globalThis.DownsHls.parsePlaylist(text, response.finalUrl);
+  playlist.sourceText = text;
+  return playlist;
 }
 
-async function createOutputSink(jobId) {
-  const storageName = `${OUTPUT_PREFIX}${jobId}.mp4`;
+async function createOutputSink(jobId, extension = "mp4", mimeType = "video/mp4") {
+  const storageName = `${OUTPUT_PREFIX}${jobId}.${extension}`;
 
   if (navigator.storage?.getDirectory) {
     let root;
@@ -184,7 +192,7 @@ async function createOutputSink(jobId) {
       size += bytes.byteLength;
     },
     async finish() {
-      return { file: new Blob(chunks, { type: "video/mp4" }), size, storageName: "" };
+      return { file: new Blob(chunks, { type: mimeType }), size, storageName: "" };
     },
     async abort() {
       chunks.length = 0;
@@ -258,14 +266,11 @@ async function runTsJob(job, signal) {
 
   activeSink = await createOutputSink(job.id);
   const muxer = createTransmuxer();
-  const playlistDuration = playlist.segments.reduce(
-    (total, segment) => total + (Number(segment.duration) || 0),
-    0
-  );
   let inputBytes = 0;
   let outputBytes = 0;
   let wroteInit = false;
   let checkedTracks = false;
+  let finalizer = null;
 
   post("progress", {
     phase: "segments",
@@ -309,17 +314,32 @@ async function runTsJob(job, signal) {
         }
 
         if (!wroteInit && output.initSegment) {
-          const finiteInit = globalThis.DownsDownload.patchMp4Durations(
-            output.initSegment,
-            playlistDuration
-          );
-          await activeSink.write(finiteInit);
-          outputBytes += finiteInit.byteLength;
+          try {
+            finalizer = new globalThis.DownsMp4Finalizer.FlatMp4Builder(output.initSegment);
+          } catch (error) {
+            throw new DownloadError(
+              "mp4-finalize",
+              `Could not prepare the finished MP4: ${error?.message || "invalid initialization metadata"}`
+            );
+          }
+          await activeSink.write(finalizer.initialBytes);
+          outputBytes += finalizer.initialBytes.byteLength;
           wroteInit = true;
         }
         if (output.data?.byteLength) {
-          await activeSink.write(output.data);
-          outputBytes += output.data.byteLength;
+          let writes;
+          try {
+            writes = finalizer.consume(output.data, outputBytes);
+          } catch (error) {
+            throw new DownloadError(
+              "mp4-finalize",
+              `Could not index a remuxed fragment: ${error?.message || "unsupported fragment layout"}`
+            );
+          }
+          for (const part of writes) {
+            await activeSink.write(part);
+            outputBytes += part.byteLength;
+          }
         }
       }
 
@@ -347,6 +367,17 @@ async function runTsJob(job, signal) {
     bytes: inputBytes,
     outputBytes
   });
+
+  try {
+    const movie = finalizer.finalize();
+    await activeSink.write(movie);
+    outputBytes += movie.byteLength;
+  } catch (error) {
+    throw new DownloadError(
+      "mp4-finalize",
+      `Could not finish the seekable MP4: ${error?.message || "invalid sample table"}`
+    );
+  }
 
   const result = await activeSink.finish();
   activeSink = null;
@@ -425,12 +456,19 @@ async function runSplitFmp4Job(job, signal) {
     );
   }
 
-  const duration = Math.max(playlistDuration(videoPlaylist), playlistDuration(audioPlaylist));
-  const finiteInit = globalThis.DownsDownload.patchMp4Durations(combined.bytes, duration);
   activeSink = await createOutputSink(job.id);
-  await activeSink.write(finiteInit);
+  let finalizer;
+  try {
+    finalizer = new globalThis.DownsMp4Finalizer.FlatMp4Builder(combined.bytes);
+  } catch (error) {
+    throw new DownloadError(
+      "mp4-finalize",
+      `Could not prepare the finished MP4: ${error?.message || "invalid initialization metadata"}`
+    );
+  }
+  await activeSink.write(finalizer.initialBytes);
   let inputBytes = videoInit.bytes.byteLength + audioInit.bytes.byteLength;
-  let outputBytes = finiteInit.byteLength;
+  let outputBytes = finalizer.initialBytes.byteLength;
 
   post("progress", {
     phase: "segments",
@@ -456,8 +494,19 @@ async function runSplitFmp4Job(job, signal) {
       const oldId = segment.kind === "audio" ? combined.audioTrackId : combined.videoTrackId;
       const newId = segment.kind === "audio" ? combined.outputAudioTrackId : combined.videoTrackId;
       const remapped = globalThis.DownsFmp4.remapFragment(segmentBytes, oldId, newId, index + 1);
-      await activeSink.write(remapped);
-      outputBytes += remapped.byteLength;
+      let writes;
+      try {
+        writes = finalizer.consume(remapped, outputBytes);
+      } catch (error) {
+        throw new DownloadError(
+          "mp4-finalize",
+          `Could not index a source fragment: ${error?.message || "unsupported fragment layout"}`
+        );
+      }
+      for (const part of writes) {
+        await activeSink.write(part);
+        outputBytes += part.byteLength;
+      }
       post("progress", {
         phase: "segments",
         message: "Downloading video and audio",
@@ -478,6 +527,157 @@ async function runSplitFmp4Job(job, signal) {
     bytes: inputBytes,
     outputBytes
   });
+  try {
+    const movie = finalizer.finalize();
+    await activeSink.write(movie);
+    outputBytes += movie.byteLength;
+  } catch (error) {
+    throw new DownloadError(
+      "mp4-finalize",
+      `Could not finish the seekable MP4: ${error?.message || "invalid sample table"}`
+    );
+  }
+  const result = await activeSink.finish();
+  activeSink = null;
+  post("complete", {
+    file: result.file,
+    size: result.size,
+    storageName: result.storageName,
+    outputStorage: result.storageName ? "opfs" : "memory",
+    sourceBytes: inputBytes
+  });
+}
+
+async function sha256Hex(value) {
+  const data = bytes(value);
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
+  return [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function writeTarEntry(sink, name, value) {
+  const data = bytes(value);
+  await sink.write(globalThis.DownsTar.header(name, data.byteLength));
+  await sink.write(data);
+  const padding = globalThis.DownsTar.padding(data.byteLength);
+  if (padding.byteLength) await sink.write(padding);
+}
+
+function sourceHost(url) {
+  try {
+    return new URL(url).hostname;
+  } catch (_error) {
+    return "unknown";
+  }
+}
+
+function sourceReadme() {
+  return new TextEncoder().encode([
+    "Downs source diagnostic bundle",
+    "",
+    "Media files are the exact bytes fetched from the selected HLS playlists.",
+    "Playlist URLs were replaced with local paths; cookies and authorization values are not included.",
+    "This bundle still contains the complete downloaded media and should be shared deliberately.",
+    "See manifest.json for ordering, durations, sizes, and SHA-256 hashes.",
+    ""
+  ].join("\n"));
+}
+
+async function runSourceBundle(job, signal) {
+  post("progress", { phase: "playlist", message: "Checking source playlists…", completed: 0, total: 0, bytes: 0 });
+  const split = job?.supportMode === "direct-fmp4-split-vod";
+  const [videoPlaylist, audioPlaylist] = await Promise.all([
+    fetchPlaylist(job.playlistUrl, signal),
+    split ? fetchPlaylist(job.audioPlaylistUrl, signal) : Promise.resolve(null)
+  ]);
+  const eligibility = split
+    ? globalThis.DownsDownload.validateSplitFmp4Playlists(videoPlaylist, audioPlaylist)
+    : globalThis.DownsDownload.validateDirectPlaylist(videoPlaylist, { hasSeparateAudio: false });
+  if (!eligibility.supported) throw new DownloadError(eligibility.code, eligibility.reason);
+
+  const schedule = split
+    ? globalThis.DownsFmp4.interleaveSegments(videoPlaylist.segments, audioPlaylist.segments)
+    : videoPlaylist.segments.map((segment, index) => ({ ...segment, kind: "", index }));
+  if (schedule.length > MAX_SEGMENTS) {
+    throw new DownloadError("segment-count", `The selected tracks have more than the ${MAX_SEGMENTS.toLocaleString()} segment safety limit.`);
+  }
+
+  activeSink = await createOutputSink(job.id, "tar", "application/x-tar");
+  await writeTarEntry(activeSink, "README.txt", sourceReadme());
+  const manifest = {
+    format: "downs-source-1",
+    createdAt: new Date().toISOString(),
+    supportMode: job.supportMode,
+    sourceHost: sourceHost(job.playlistUrl),
+    tracks: []
+  };
+  let inputBytes = 0;
+  let outputBytes = 0;
+
+  const writeTracked = async (name, data) => {
+    const before = data.byteLength;
+    await writeTarEntry(activeSink, name, data);
+    outputBytes += 512 + before + globalThis.DownsTar.padding(before).byteLength;
+  };
+
+  if (split) {
+    const [videoInit, audioInit] = await Promise.all([
+      fetchBytes(videoPlaylist.mapUrl, signal, "Video initialization segment"),
+      fetchBytes(audioPlaylist.mapUrl, signal, "Audio initialization segment")
+    ]);
+    inputBytes += videoInit.bytes.byteLength + audioInit.bytes.byteLength;
+    await writeTracked("video/playlist.m3u8", globalThis.DownsTar.normalizedPlaylist(videoPlaylist));
+    await writeTracked("audio/playlist.m3u8", globalThis.DownsTar.normalizedPlaylist(audioPlaylist));
+    await writeTracked("video/init.mp4", videoInit.bytes);
+    await writeTracked("audio/init.mp4", audioInit.bytes);
+    manifest.tracks.push(
+      { kind: "video", playlist: "video/playlist.m3u8", init: { file: "video/init.mp4", size: videoInit.bytes.byteLength, sha256: await sha256Hex(videoInit.bytes) }, segments: [] },
+      { kind: "audio", playlist: "audio/playlist.m3u8", init: { file: "audio/init.mp4", size: audioInit.bytes.byteLength, sha256: await sha256Hex(audioInit.bytes) }, segments: [] }
+    );
+  } else {
+    await writeTracked("playlist.m3u8", globalThis.DownsTar.normalizedPlaylist(videoPlaylist));
+    manifest.tracks.push({ kind: "muxed", playlist: "playlist.m3u8", segments: [] });
+  }
+
+  post("progress", { phase: "segments", message: "Capturing source media", completed: 0, total: schedule.length, bytes: inputBytes });
+  await globalThis.DownsDownload.processInOrder(
+    schedule,
+    FETCH_CONCURRENCY,
+    async (segment, index) => {
+      ensureNotCancelled(signal);
+      const response = await fetchBytes(segment.url, signal, "Source media segment", { segmentIndex: index + 1 });
+      inputBytes += response.bytes.byteLength;
+      return { bytes: response.bytes, sha256: await sha256Hex(response.bytes) };
+    },
+    async (result, segment, index) => {
+      ensureNotCancelled(signal);
+      const extension = split ? "m4s" : "ts";
+      const file = globalThis.DownsTar.segmentName(segment.kind, segment.index, extension);
+      await writeTracked(file, result.bytes);
+      const target = split
+        ? manifest.tracks.find((track) => track.kind === segment.kind)
+        : manifest.tracks[0];
+      target.segments.push({
+        file,
+        duration: Number(segment.duration) || 0,
+        size: result.bytes.byteLength,
+        sha256: result.sha256
+      });
+      post("progress", {
+        phase: "segments",
+        message: "Capturing source media",
+        completed: index + 1,
+        total: schedule.length,
+        bytes: inputBytes,
+        outputBytes
+      });
+    }
+  );
+
+  ensureNotCancelled(signal);
+  post("progress", { phase: "remuxing", message: "Finalizing source bundle…", completed: schedule.length, total: schedule.length, bytes: inputBytes, outputBytes });
+  await writeTracked("manifest.json", new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`));
+  await activeSink.write(globalThis.DownsTar.endBlocks());
+  outputBytes += 1024;
   const result = await activeSink.finish();
   activeSink = null;
   post("complete", {
@@ -492,6 +692,9 @@ async function runSplitFmp4Job(job, signal) {
 async function runJob(job) {
   activeController = new AbortController();
   activeRequestContext = job?.requestContext || {};
+  if (job?.outputMode === "source-bundle") {
+    return runSourceBundle(job, activeController.signal);
+  }
   if (job?.supportMode === "direct-fmp4-split-vod") {
     return runSplitFmp4Job(job, activeController.signal);
   }

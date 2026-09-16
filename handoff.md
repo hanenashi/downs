@@ -1,5 +1,33 @@
 # Downs handoff — seek-safe MP4 pass + future companion seam
 
+## 2.9 implementation update
+
+The decisive A/B test used one real 22:52 Downs output with 344 genuine
+keyframes. Native FFmpeg stream-copy variants preserved identical encoded
+audio/video. A fragmented, keyframe-aligned file with `mfra` did not improve VLC
+seeking materially; a conventional flat MP4 was clean and responsive.
+
+Downs 2.9 therefore implements a bounded in-browser defragmenter for the
+existing DIRECT gates. It copies encoded `mdat` payloads unchanged, reads actual
+`tfdt`/`tfhd`/`trun` sample metadata, drops fragmented-only boxes, builds
+`stts`/`ctts`/`stsc`/`stsz`/`co64`/`stss` tables, derives per-track durations,
+and appends a conventional `moov`. MPEG-TS still passes through mux.js first;
+the separate fMP4 path uses its original samples after track-ID remapping.
+
+The popup also offers an advanced **Source bundle** action. It creates a
+`.downs-source.tar` job containing exact fetched TS segments or fMP4 init/media
+fragments, normalized local playlists, and a JSON manifest with duration, size,
+and SHA-256 data. Signed source URLs, cookies, and authorization values are not
+stored. This is diagnostic export for supported DIRECT inputs, not the later
+arbitrary CAPTURE/DUMP strategy.
+
+Focused local evidence is green: both the existing 10-minute mux.js artifact
+and the generated two-language split-fMP4 fixture became flat, fully decodable
+MP4s with finite per-track durations; a generated source bundle was accepted by
+standard `tar`. Physical Kiwi/VLC testing remains the important next gate.
+
+---
+
 ## Mission
 
 Downs is now good enough that the next pass should improve **finished-file playback quality**, not add another format.
