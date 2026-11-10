@@ -9,6 +9,7 @@ const {
   patchMp4Durations,
   processInOrder,
   randomHash,
+  restoreVerifiedContainer,
   safeFilename,
   suggestFilename,
   sourceBundleFilename,
@@ -100,6 +101,18 @@ test("accepts only finite, clear, muxed MPEG-TS media playlists", () => {
   assert.equal(validateDirectPlaylist(media({ iframeOnly: true })).code, "iframe-only");
   assert.equal(validateDirectPlaylist(media(), { hasSeparateAudio: true }).code, "separate-audio");
   assert.equal(validateDirectPlaylist(media({ segments: [] })).code, "empty");
+});
+
+test("restores a byte-probed MPEG-TS decision inside the download worker", () => {
+  const probed = media({ segmented: "unknown", segments: [{ url: "https://example.com/one.jpeg" }] });
+  assert.equal(validateDirectPlaylist(probed).code, "container");
+  assert.equal(restoreVerifiedContainer(probed, "direct-ts-vod").segmented, "ts");
+  assert.equal(probed.containerProbe, "verified-before-queue");
+  assert.equal(validateDirectPlaylist(probed).supported, true);
+
+  const unverified = media({ segmented: "unknown" });
+  restoreVerifiedContainer(unverified, "");
+  assert.equal(unverified.segmented, "unknown");
 });
 
 test("accepts only a simple clear fMP4 video and separate audio pair", () => {

@@ -233,3 +233,10 @@ That playlist names its segment payloads `.jpeg` and serves them as
 found sync bytes at offsets 0 and 188. Downs classified the stream as MPEG-TS
 and the existing conservative DIRECT gate accepted it as muxed, unencrypted
 VOD. The full multi-hour media download was intentionally not run.
+
+The first queued job exposed a separate handoff regression: the worker reparsed
+the `.jpeg` playlist without the inspector's probe evidence and rejected it as
+an unknown container. The persisted, already-validated `direct-ts-vod` support
+mode now restores MPEG-TS inside both MP4 and source-bundle workers. A focused
+regression test covers the restore and verifies that unverified unknown
+containers remain rejected.

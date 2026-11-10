@@ -20,6 +20,19 @@
     return { supported: false, code, reason };
   }
 
+  function restoreVerifiedContainer(playlist, supportMode) {
+    if (
+      playlist?.kind === "media" &&
+      playlist.segmented === "unknown" &&
+      supportMode === "direct-ts-vod" &&
+      !playlist.mapUrl
+    ) {
+      playlist.segmented = "ts";
+      playlist.containerProbe = playlist.containerProbe || "verified-before-queue";
+    }
+    return playlist;
+  }
+
   function fmp4TrackIssue(playlist, label) {
     if (!playlist || playlist.kind !== "media") {
       return unsupported("not-media", `${label} is not an HLS media playlist.`);
@@ -371,6 +384,7 @@
     patchMp4Durations,
     processInOrder,
     randomHash,
+    restoreVerifiedContainer,
     safeFilename,
     sourceBundleFilename,
     suggestFilename,

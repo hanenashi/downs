@@ -262,7 +262,10 @@ async function runTsJob(job, signal) {
 
   post("progress", { phase: "playlist", message: "Checking playlist…", completed: 0, total: 0, bytes: 0 });
 
-  const playlist = await fetchPlaylist(playlistUrl, signal);
+  const playlist = globalThis.DownsDownload.restoreVerifiedContainer(
+    await fetchPlaylist(playlistUrl, signal),
+    job.supportMode
+  );
   const eligibility = globalThis.DownsDownload.validateDirectPlaylist(playlist, {
     hasSeparateAudio: Boolean(job.hasSeparateAudio)
   });
@@ -632,6 +635,7 @@ async function runSourceBundle(job, signal) {
     fetchPlaylist(job.playlistUrl, signal),
     split ? fetchPlaylist(job.audioPlaylistUrl, signal) : Promise.resolve(null)
   ]);
+  globalThis.DownsDownload.restoreVerifiedContainer(videoPlaylist, job.supportMode);
   const eligibility = split
     ? globalThis.DownsDownload.validateSplitFmp4Playlists(videoPlaylist, audioPlaylist)
     : globalThis.DownsDownload.validateDirectPlaylist(videoPlaylist, { hasSeparateAudio: false });

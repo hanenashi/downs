@@ -1,5 +1,15 @@
 # Downs handoff — seek-safe MP4 pass + future companion seam
 
+## 2.12.2 probed-container worker handoff
+
+The 2.12.1 inspector correctly identified suffix-disguised MPEG-TS and queued a
+supported job, but the download worker independently reparsed the playlist and
+lost that byte-probe decision. It then failed before fetching segments with
+`container: This milestone supports MPEG-TS segments only.` The worker and
+source-bundle path now restore the persisted `direct-ts-vod` decision when the
+fresh playlist still has an unknown suffix. Existing 2.12.1 failed jobs can use
+**Retry** after the extension is updated; they do not need to be recreated.
+
 ## 2.12.1 full Referer compatibility fix
 
 Downs previously reduced every observed Referer to its origin before replaying

@@ -18,7 +18,7 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.12.1 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downs 2.12.2 is experimental. In addition to the bounded MPEG-TS path, persistent
 Downloads manager, request-context replay, and playback grouping, it can now
 assemble a conservative modern HLS layout: finite unencrypted fMP4/CMAF VOD
 with one separate H.264 video track and a user-selected AAC audio rendition.
