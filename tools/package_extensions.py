@@ -12,6 +12,7 @@ EXTENSION_DIR = ROOT / "extension"
 BUILD_ROOT = ROOT / "build"
 DIST_DIR = ROOT / "dist"
 FILES = [
+    "aes-core.js",
     "audio-core.js",
     "blob-playlist-core.js",
     "blob-bridge.js",

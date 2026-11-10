@@ -1,5 +1,29 @@
 # Downs handoff — seek-safe MP4 pass + future companion seam
 
+## 2.12 AES-128 MPEG-TS DIRECT update
+
+Downs now accepts one deliberately narrow encrypted layout: finite, muxed
+MPEG-TS VOD using HLS whole-segment `METHOD=AES-128` with identity-format
+16-byte keys. The parser carries media-sequence numbers and per-segment key
+state; the DIRECT gate validates explicit or sequence-derived IVs and permits
+key rotation. SAMPLE-AES, DRM, encrypted fMP4, byte ranges, and other key
+formats remain rejected.
+
+The worker fetches keys through the existing authorized request context,
+imports them as non-extractable Web Crypto AES-CBC keys, clears the raw key
+buffers, decrypts each segment in memory, and passes only plaintext MPEG-TS to
+the established mux.js and flat-MP4 finalizer. Keys are never persisted.
+Encrypted source bundles are disabled so diagnostics cannot accidentally omit
+or expose the material required to replay their ciphertext.
+
+A deterministic three-segment fixture covers explicit IV, implicit
+media-sequence IV, and key rotation. Chrome-for-Testing 156 completed the real
+extension flow at 420px. The resulting 257,699-byte MP4 was 6.08 seconds with
+150 H.264 frames at 320×180 plus AAC audio, and FFmpeg's full decode was clean.
+Unit tests cover IV derivation, Web Crypto round-trip decryption, metadata
+validation, parser key state, and the DIRECT gate. Real-site Kiwi and Firefox
+validation remain the next compatibility gate.
+
 ## 2.11 DASH inspection update
 
 Downs now detects `.mpd`, `application/dash+xml`, and DVB DASH-playlist response

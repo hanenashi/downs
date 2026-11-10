@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="data:,">
+    <title>Downs AES-128 fixture</title>
+  </head>
+  <body>
+    <h1>AES-128 HLS fixture</h1>
+    <button id="request-playlist" type="button">Request encrypted playlist</button>
+    <output id="result">Waiting</output>
+    <script>
+      document.getElementById("request-playlist").addEventListener("click", async () => {
+        const response = await fetch("/aes/encrypted.m3u8", { cache: "no-store" });
+        const body = await response.text();
+        document.getElementById("result").value = body.startsWith("#EXTM3U") ? "Loaded" : "Failed";
+      });
+    </script>
+  </body>
+</html>

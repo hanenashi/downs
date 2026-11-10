@@ -9,6 +9,9 @@ if (!globalThis.DownsBlobPlaylist && typeof importScripts === "function") {
 if (!globalThis.DownsDash && typeof importScripts === "function") {
   importScripts("dash-parser.js");
 }
+if (!globalThis.DownsAes && typeof importScripts === "function") {
+  importScripts("aes-core.js");
+}
 if (!globalThis.DownsDownload && typeof importScripts === "function") {
   importScripts("download-core.js");
 }
@@ -610,6 +613,15 @@ async function startDownloadJob(message) {
   const storedSettings = await jobStorageArea.get(globalThis.DownsDownload.SETTINGS_KEY);
   const filenameMode = storedSettings[globalThis.DownsDownload.SETTINGS_KEY]?.filenameMode || "suggested";
   const outputMode = message.outputMode === "source-bundle" ? "source-bundle" : "mp4";
+  if (outputMode === "source-bundle" && eligibility.code === "direct-ts-aes128-vod") {
+    return {
+      ok: false,
+      error: {
+        code: "encrypted-source-bundle",
+        message: "Encrypted source bundles are disabled because Downs never stores decryption keys."
+      }
+    };
+  }
   const id = createJobId();
   const suggestedFilename = globalThis.DownsDownload.filenameForMode(
     sourceTab?.title || "downs-video",

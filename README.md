@@ -12,7 +12,7 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.11 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downs 2.12 is experimental. In addition to the bounded MPEG-TS path, persistent
 Downloads manager, request-context replay, and playback grouping, it can now
 assemble a conservative modern HLS layout: finite unencrypted fMP4/CMAF VOD
 with one separate H.264 video track and a user-selected AAC audio rendition.
@@ -33,6 +33,8 @@ It can:
 - identify VOD versus live/event playlists;
 - identify MPEG-TS, fMP4/CMAF, `EXT-X-MAP`, and `EXT-X-KEY`;
 - distinguish ordinary AES-128 metadata from likely protected media;
+- decrypt finite MPEG-TS VOD protected with standard whole-segment AES-128,
+  including explicit or media-sequence IVs and identity-key rotation;
 - report HTTP, timeout, HTML-response, and other useful failure reasons;
 - present detected playbacks with page titles and compact URL summaries, then
   add parsed stream facts only after a playlist has actually been inspected;
@@ -99,6 +101,9 @@ The secondary **Source bundle** action creates an advanced `.downs-source.tar`
 diagnostic job instead of a finished MP4. It stores each fetched segment or
 fragment byte-for-byte, with locally replayable playlists and a manifest. It is
 intended for reproducible debugging and can be as large as the source media.
+It is deliberately unavailable for AES-128 jobs: Downs fetches authorized key
+bytes only into memory, imports them as non-extractable Web Crypto keys, clears
+the raw buffers, and never stores keys in a diagnostic archive.
 
 For a supported fMP4 master with separate audio, Downs initially selects that
 variant's default audio rendition. When several matching renditions exist, a
@@ -190,9 +195,12 @@ they do contain the complete downloaded media and should be shared deliberately.
 ## Known limits
 
 - No DRM bypass. Protected media is reported as unsupported.
-- Live/event playlists, AES-128 encryption, byte-range segments or init maps,
-  discontinuities, gaps, I-frame-only media, and unsupported codecs are not
-  downloaded.
+- Live/event playlists, byte-range segments or init maps, discontinuities,
+  gaps, I-frame-only media, and unsupported codecs are not downloaded.
+- Encrypted DIRECT support is intentionally limited to finite MPEG-TS VOD with
+  HLS `METHOD=AES-128`, identity-format 16-byte keys, and AES-CBC segment
+  encryption. SAMPLE-AES, FairPlay, CENC/DRM, encrypted fMP4, and other key
+  formats remain unsupported; Downs does not bypass DRM.
 - fMP4/CMAF support currently requires one map per track, separate H.264 video
   and AAC audio VOD playlists whose durations differ by no more than two
   seconds. Multiplexed fMP4, multiple map periods, and advanced edit/timeline
@@ -215,7 +223,7 @@ they do contain the complete downloaded media and should be shared deliberately.
 - Firefox has a generated experimental build, but Chrome desktop and Kiwi are
   the first compatibility targets.
 - DASH is discovery/inspection only. MPD representations are never queued into
-  the DIRECT HLS worker in 2.11.
+  the DIRECT HLS worker in 2.12.
 
 ## Development
 
@@ -223,6 +231,7 @@ Run the parser tests and source checks:
 
 ```bash
 node --test tests/*.test.js
+node --check extension/aes-core.js
 node --check extension/audio-core.js
 node --check extension/blob-playlist-core.js
 node --check extension/blob-bridge.js
@@ -311,6 +320,19 @@ node tools/serve-fixtures.js
 Generated media stays under ignored `test-artifacts/`. FFmpeg is used only to
 create and validate development fixtures; it is not part of the extension.
 
+Generate the deterministic AES-128 MPEG-TS fixture to exercise explicit and
+implicit IVs plus key rotation:
+
+```bash
+tools/generate-aes-fixture.sh
+node tools/serve-fixtures.js
+# http://127.0.0.1:8765/aes-page.html
+```
+
+The fixture uses development-only fixed keys. A successful export can be
+checked with `tools/validate-media.js` against
+`test-artifacts/aes-fixture/encrypted.m3u8`.
+
 Build dependency-free Chromium and Firefox zip packages:
 
 ```bash
@@ -332,9 +354,9 @@ extension packages.
 
 ## Direction
 
-The immediate work is real-site Firefox/Kiwi validation of 2.10 Blob discovery
-and 2.11 MPD inspection, without relaxing the stable 2.9 DIRECT gates. AES-128
-TS, DASH download feasibility, and live RECORD remain separate backlog passes.
+The immediate work is real-site Firefox/Kiwi validation of 2.10 Blob discovery,
+2.11 MPD inspection, and the bounded 2.12 AES-128 TS path. DASH download
+feasibility and live RECORD remain separate backlog passes.
 Dark mode, editable preflight filenames, and broader manager-row interactions
 remain separate UI work.
 

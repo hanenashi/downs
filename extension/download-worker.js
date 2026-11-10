@@ -2,6 +2,7 @@
 
 importScripts(
   "hls-parser.js",
+  "aes-core.js",
   "download-core.js",
   "fmp4-core.js",
   "mp4-finalizer.js",
@@ -11,6 +12,7 @@ importScripts(
 
 const PLAYLIST_LIMIT_BYTES = 5 * 1024 * 1024;
 const SEGMENT_LIMIT_BYTES = 64 * 1024 * 1024;
+const KEY_LIMIT_BYTES = 16;
 const MEMORY_OUTPUT_LIMIT_BYTES = 256 * 1024 * 1024;
 const MAX_SEGMENTS = 20_000;
 const FETCH_CONCURRENCY = 4;
@@ -88,20 +90,30 @@ async function fetchBytes(url, signal, kind, detail = {}) {
     );
   }
 
-  const limit = kind === "Playlist" ? PLAYLIST_LIMIT_BYTES : SEGMENT_LIMIT_BYTES;
+  const limit = kind === "Playlist"
+    ? PLAYLIST_LIMIT_BYTES
+    : kind === "Encryption key"
+      ? KEY_LIMIT_BYTES
+      : SEGMENT_LIMIT_BYTES;
   const contentLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(contentLength) && contentLength > limit) {
+    const limitLabel = kind === "Encryption key"
+      ? "16-byte safety limit"
+      : `${Math.round(limit / 1024 / 1024)} MiB safety limit`;
     throw new DownloadError(
       "too-large",
-      `${kind} is larger than the ${Math.round(limit / 1024 / 1024)} MiB safety limit.`
+      `${kind} is larger than the ${limitLabel}.`
     );
   }
 
   const buffer = await response.arrayBuffer();
   if (buffer.byteLength > limit) {
+    const limitLabel = kind === "Encryption key"
+      ? "16-byte safety limit"
+      : `${Math.round(limit / 1024 / 1024)} MiB safety limit`;
     throw new DownloadError(
       "too-large",
-      `${kind} is larger than the ${Math.round(limit / 1024 / 1024)} MiB safety limit.`
+      `${kind} is larger than the ${limitLabel}.`
     );
   }
 
@@ -271,10 +283,29 @@ async function runTsJob(job, signal) {
   let wroteInit = false;
   let checkedTracks = false;
   let finalizer = null;
+  const encrypted = eligibility.code === "direct-ts-aes128-vod";
+  const keyCache = new Map();
+
+  const keyFor = (url) => {
+    if (!keyCache.has(url)) {
+      keyCache.set(url, (async () => {
+        const response = await fetchBytes(url, signal, "Encryption key");
+        inputBytes += response.bytes.byteLength;
+        try {
+          return await globalThis.DownsAes.importKey(response.bytes);
+        } catch (error) {
+          throw new DownloadError("aes-key", error?.message || "The AES-128 key is invalid.");
+        } finally {
+          response.bytes.fill(0);
+        }
+      })());
+    }
+    return keyCache.get(url);
+  };
 
   post("progress", {
     phase: "segments",
-    message: "Downloading",
+    message: encrypted ? "Downloading + decrypting" : "Downloading",
     completed: 0,
     total: playlist.segments.length,
     bytes: 0
@@ -289,7 +320,19 @@ async function runTsJob(job, signal) {
         segmentIndex: index + 1
       });
       inputBytes += response.bytes.byteLength;
-      return response.bytes;
+      if (!segment.encryption) return response.bytes;
+      try {
+        const key = await keyFor(segment.encryption.url);
+        const iv = globalThis.DownsAes.ivForSegment(segment.encryption.iv, segment.sequence);
+        return await globalThis.DownsAes.decrypt(response.bytes, key, iv);
+      } catch (error) {
+        if (error instanceof DownloadError) throw error;
+        throw new DownloadError(
+          "aes-decrypt",
+          `Could not decrypt media segment ${index + 1}: ${error?.message || "AES-CBC failure"}`,
+          { segmentIndex: index + 1 }
+        );
+      }
     },
     async (bytes, _segment, index) => {
       ensureNotCancelled(signal);
@@ -345,7 +388,7 @@ async function runTsJob(job, signal) {
 
       post("progress", {
         phase: "segments",
-        message: "Downloading",
+        message: encrypted ? "Downloading + decrypting" : "Downloading",
         completed: index + 1,
         total: playlist.segments.length,
         bytes: inputBytes,
@@ -593,6 +636,12 @@ async function runSourceBundle(job, signal) {
     ? globalThis.DownsDownload.validateSplitFmp4Playlists(videoPlaylist, audioPlaylist)
     : globalThis.DownsDownload.validateDirectPlaylist(videoPlaylist, { hasSeparateAudio: false });
   if (!eligibility.supported) throw new DownloadError(eligibility.code, eligibility.reason);
+  if (eligibility.code === "direct-ts-aes128-vod") {
+    throw new DownloadError(
+      "encrypted-source-bundle",
+      "Encrypted source bundles are disabled because they cannot include decryption keys safely."
+    );
+  }
 
   const schedule = split
     ? globalThis.DownsFmp4.interleaveSegments(videoPlaylist.segments, audioPlaylist.segments)

@@ -205,3 +205,17 @@ showed the expected representation metadata at 420px and 320px with no popup
 or fixture console warnings/errors. The ordinary browser-tab scrollbar reduces
 the document element's layout viewport, but the fixed popup body itself had no
 horizontal content overflow. Firefox and physical Kiwi remain pending.
+
+## 2026-11-10 — AES-128 MPEG-TS DIRECT
+
+A generated three-segment fixture exercised an explicit IV on the first
+segment, a media-sequence-derived IV on the second, and a rotated identity key
+on the third. Chrome-for-Testing 156 detected and inspected the playlist at
+420px, displayed the local-decryption/key-retention notice, omitted the source
+bundle action, and completed a normal MP4 job.
+
+The exported file was 257,699 bytes and 6.08 seconds long. FFprobe found H.264
+at 320×180 plus 48 kHz AAC; the validator counted 150 frames at 25 fps and a
+full FFmpeg decode completed without errors. The source playlist totaled 6.00
+seconds. This validates the synthetic authorized identity-key path, not
+SAMPLE-AES, DRM, encrypted fMP4, or arbitrary real-site request policies.

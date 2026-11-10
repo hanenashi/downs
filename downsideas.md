@@ -67,9 +67,14 @@ Tests: static MPD, SegmentTemplate/SegmentTimeline, BaseURL resolution, separate
 
 ## Priority B — AES-128 HLS (non-DRM)
 
+Status: landed as the bounded 2.12 DIRECT pass. Finite muxed MPEG-TS VOD now
+supports identity-format `METHOD=AES-128`, explicit or media-sequence IVs, and
+key rotation. Keys remain in memory and encrypted source bundles are disabled.
+SAMPLE-AES, DRM, encrypted fMP4, and non-identity key formats remain rejected.
+
 Upstream: `v3/data/job/mget/plugins/decrypt.js` uses Web Crypto AES-CBC.
 
-Downs currently rejects encrypted manifests in `extension/download-core.js`. Distinguish conventional HLS `METHOD=AES-128` from DRM/protected formats (e.g. SAMPLE-AES, FairPlay and CENC); **do not implement DRM circumvention**.
+Downs distinguishes conventional HLS `METHOD=AES-128` from DRM/protected formats (e.g. SAMPLE-AES, FairPlay and CENC); **do not implement DRM circumvention**.
 
 Possible bounded pipeline:
 1. Validate finite TS VOD, supported key method/format, IV derivation, segment sequence and key rotation.

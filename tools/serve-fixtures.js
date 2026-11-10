@@ -7,13 +7,15 @@ const path = require("node:path");
 
 const fixtureRoot = path.resolve(__dirname, "..", "tests", "fixtures");
 const modernFixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "modern-fixture");
+const aesFixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "aes-fixture");
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".m3u8", "application/vnd.apple.mpegurl; charset=utf-8"],
   [".mpd", "application/dash+xml; charset=utf-8"],
   [".ts", "video/mp2t"],
   [".mp4", "video/mp4"],
-  [".m4s", "video/iso.segment"]
+  [".m4s", "video/iso.segment"],
+  [".bin", "application/octet-stream"]
 ]);
 
 function fixturePath(urlValue) {
@@ -22,6 +24,12 @@ function fixturePath(urlValue) {
     const relative = pathname.replace(/^\/modern\/?/, "");
     const resolved = path.resolve(modernFixtureRoot, relative);
     if (resolved !== modernFixtureRoot && !resolved.startsWith(`${modernFixtureRoot}${path.sep}`)) return null;
+    return resolved;
+  }
+  if (pathname === "/aes" || pathname.startsWith("/aes/")) {
+    const relative = pathname.replace(/^\/aes\/?/, "");
+    const resolved = path.resolve(aesFixtureRoot, relative);
+    if (resolved !== aesFixtureRoot && !resolved.startsWith(`${aesFixtureRoot}${path.sep}`)) return null;
     return resolved;
   }
   const relative = pathname === "/" ? "download-page.html" : pathname.replace(/^\/+/, "");

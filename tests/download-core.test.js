@@ -72,9 +72,26 @@ test("accepts only finite, clear, muxed MPEG-TS media playlists", () => {
   assert.equal(validateDirectPlaylist({ kind: "master" }).code, "master");
   assert.equal(validateDirectPlaylist(media({ vod: false, live: true })).code, "live");
   assert.equal(validateDirectPlaylist(media({ drm: true, encrypted: true })).code, "protected");
+  const encrypted = media({
+    encrypted: true,
+    encryptionMethod: "AES-128",
+    segments: [{
+      url: "https://example.com/one.ts",
+      sequence: 8,
+      encryption: {
+        method: "AES-128",
+        url: "https://example.com/key.bin",
+        keyFormat: "identity"
+      }
+    }]
+  });
+  assert.equal(validateDirectPlaylist(encrypted).code, "direct-ts-aes128-vod");
   assert.equal(
-    validateDirectPlaylist(media({ encrypted: true, encryptionMethod: "AES-128" })).code,
-    "encrypted"
+    validateDirectPlaylist({
+      ...encrypted,
+      segments: [{ ...encrypted.segments[0], encryption: { ...encrypted.segments[0].encryption, iv: "bad" } }]
+    }).code,
+    "encrypted-layout"
   );
   assert.equal(validateDirectPlaylist(media({ segmented: "fmp4", mapUrl: "init.mp4" })).code, "fmp4");
   assert.equal(validateDirectPlaylist(media({ hasByteRanges: true })).code, "byte-range");

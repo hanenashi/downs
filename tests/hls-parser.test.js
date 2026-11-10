@@ -91,6 +91,8 @@ one.ts
   assert.equal(aes.encryptionMethod, "AES-128");
   assert.equal(aes.drm, false);
   assert.equal(aes.keys[0].url, "https://example.com/secure/key.bin");
+  assert.equal(aes.segments[0].sequence, 0);
+  assert.equal(aes.segments[0].encryption.url, "https://example.com/secure/key.bin");
 
   const protectedPlaylist = parsePlaylist(`#EXTM3U
 #EXT-X-KEY:METHOD=SAMPLE-AES,URI="skd://license",KEYFORMAT="com.apple.streamingkeydelivery"
@@ -99,6 +101,28 @@ one.m4s
 `, "https://example.com/protected/index.m3u8");
 
   assert.equal(protectedPlaylist.drm, true);
+});
+
+test("assigns AES-128 keys, IVs, sequence numbers, rotation, and METHOD=NONE per segment", () => {
+  const playlist = parsePlaylist(`#EXTM3U
+#EXT-X-MEDIA-SEQUENCE:8
+#EXT-X-KEY:METHOD=AES-128,URI="one.key",IV=0x000000000000000000000000000000aa
+#EXTINF:4,
+one.ts
+#EXT-X-KEY:METHOD=AES-128,URI="two.key"
+#EXTINF:4,
+two.ts
+#EXT-X-KEY:METHOD=NONE
+#EXTINF:4,
+clear.ts
+#EXT-X-ENDLIST
+`, "https://example.com/secure/index.m3u8");
+
+  assert.equal(playlist.mediaSequence, 8);
+  assert.deepEqual(playlist.segments.map((segment) => segment.sequence), [8, 9, 10]);
+  assert.equal(playlist.segments[0].encryption.iv, "0x000000000000000000000000000000aa");
+  assert.equal(playlist.segments[1].encryption.url, "https://example.com/secure/two.key");
+  assert.equal(playlist.segments[2].encryption, null);
 });
 
 test("classifies a media playlist without ENDLIST as live", () => {

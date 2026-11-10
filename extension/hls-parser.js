@@ -148,6 +148,7 @@
     const segments = [];
     const maps = [];
     const keys = [];
+    const activeKeys = new Map();
     const warnings = [];
     let pendingSegmentDuration;
     let pendingSegmentTitle = "";
@@ -155,6 +156,7 @@
     let pendingDiscontinuity = false;
     let pendingGap = false;
     let targetDuration;
+    let mediaSequence = 0;
     let playlistType;
     let hasEndList = false;
     let iframeOnly = false;
@@ -226,13 +228,26 @@
 
       if (line.startsWith("#EXT-X-KEY:")) {
         const attributes = parseAttributeList(line.slice(line.indexOf(":") + 1));
-        keys.push({
+        const key = {
           method: attributes.METHOD || "UNKNOWN",
           url: resolveUrl(attributes.URI, playlistUrl),
           iv: attributes.IV,
           keyFormat: attributes.KEYFORMAT || "identity",
           keyFormatVersions: attributes.KEYFORMATVERSIONS
-        });
+        };
+        keys.push(key);
+        if (key.method.toUpperCase() === "NONE") {
+          activeKeys.clear();
+        } else {
+          activeKeys.set(key.keyFormat.toLowerCase(), key);
+        }
+        continue;
+      }
+
+      if (line.startsWith("#EXT-X-MEDIA-SEQUENCE:")) {
+        const parsed = numberOrUndefined(line.slice(line.indexOf(":") + 1));
+        if (Number.isSafeInteger(parsed) && parsed >= 0) mediaSequence = parsed;
+        else warnings.push("EXT-X-MEDIA-SEQUENCE is not a safe non-negative integer.");
         continue;
       }
 
@@ -280,10 +295,14 @@
       }
 
       if (line && !line.startsWith("#") && pendingSegmentDuration !== undefined) {
+        const sequence = mediaSequence + segments.length;
+        const encryption = activeKeys.get("identity");
         segments.push({
           duration: pendingSegmentDuration,
           title: pendingSegmentTitle,
           url: resolveUrl(line, playlistUrl),
+          sequence,
+          encryption: encryption ? { ...encryption } : null,
           byteRange: pendingByteRange,
           discontinuity: pendingDiscontinuity,
           gap: pendingGap
@@ -299,9 +318,9 @@
     const kind = variants.length > 0 || lines.some((line) => line.startsWith("#EXT-X-MEDIA:"))
       ? "master"
       : "media";
-    const activeKeys = keys.filter((key) => key.method.toUpperCase() !== "NONE");
-    const encrypted = activeKeys.length > 0;
-    const drm = activeKeys.some(isProtectedKey);
+    const encryptionKeys = keys.filter((key) => key.method.toUpperCase() !== "NONE");
+    const encrypted = segments.some((segment) => Boolean(segment.encryption)) || encryptionKeys.length > 0;
+    const drm = encryptionKeys.some(isProtectedKey);
     const segmented = classifySegments(segments, maps.length > 0);
 
     return {
@@ -311,7 +330,7 @@
       live: kind === "media" ? !hasEndList : null,
       playlistType,
       encrypted,
-      encryptionMethod: activeKeys[0]?.method,
+      encryptionMethod: encryptionKeys[0]?.method,
       drm,
       segmented,
       mapUrl: maps[0]?.url,
@@ -326,6 +345,7 @@
       hasGaps: segments.some((segment) => segment.gap),
       iframeOnly,
       targetDuration,
+      mediaSequence,
       warnings
     };
   }

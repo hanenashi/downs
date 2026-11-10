@@ -8,6 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const extensionDir = path.join(root, "extension");
 const manifests = ["manifest.json", "manifest.firefox.json"];
 const requiredFiles = [
+  "aes-core.js",
   "audio-core.js",
   "background.js",
   "blob-bridge.js",
@@ -109,8 +110,8 @@ assert.doesNotMatch(
 );
 assert.match(
   popupHtml,
-  /<script src="link-group-core\.js"><\/script>[\s\S]*<script src="audio-core\.js"><\/script>[\s\S]*<script src="popup\.js"><\/script>/,
-  "popup must load grouping and audio helpers before its controller"
+  /<script src="link-group-core\.js"><\/script>[\s\S]*<script src="aes-core\.js"><\/script>[\s\S]*<script src="download-core\.js"><\/script>[\s\S]*<script src="audio-core\.js"><\/script>[\s\S]*<script src="popup\.js"><\/script>/,
+  "popup must load grouping, AES, download, and audio helpers before its controller"
 );
 
 console.log("Extension manifests and shipped files look valid.");

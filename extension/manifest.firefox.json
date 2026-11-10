@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Downs",
-  "version": "2.11.0",
+  "version": "2.12.0",
   "description": "Inspect HLS and DASH streams, assemble supported HLS VOD as MP4, and manage private downloads.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -12,7 +12,7 @@
   "permissions": ["declarativeNetRequest", "downloads", "storage", "tabs", "webRequest"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": {
-    "scripts": ["hls-parser.js", "dash-parser.js", "blob-playlist-core.js", "download-core.js", "job-core.js", "request-context.js", "background.js"]
+    "scripts": ["hls-parser.js", "dash-parser.js", "blob-playlist-core.js", "aes-core.js", "download-core.js", "job-core.js", "request-context.js", "background.js"]
   },
   "content_scripts": [
     {

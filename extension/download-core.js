@@ -1,12 +1,13 @@
 (function initDownsDownload(root, factory) {
-  const api = factory();
+  const aes = root.DownsAes || (typeof module === "object" && module.exports ? require("./aes-core.js") : null);
+  const api = factory(aes);
 
   if (typeof module === "object" && module.exports) {
     module.exports = api;
   }
 
   root.DownsDownload = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, () => {
+})(typeof globalThis !== "undefined" ? globalThis : this, (Aes) => {
   "use strict";
 
   const DEFAULT_FILENAME = "downs-video.mp4";
@@ -84,12 +85,6 @@
     if (playlist.drm) {
       return unsupported("protected", "DRM or protected media cannot be downloaded.");
     }
-    if (playlist.encrypted) {
-      return unsupported(
-        "encrypted",
-        `${playlist.encryptionMethod || "Encrypted"} playlists are not supported yet.`
-      );
-    }
     if (!playlist.vod || playlist.live) {
       return unsupported(
         "live",
@@ -133,6 +128,22 @@
     }
     if (!Array.isArray(playlist.segments) || playlist.segments.length === 0) {
       return unsupported("empty", "The playlist does not contain any media segments.");
+    }
+
+    if (playlist.encrypted) {
+      const encryptedSegments = playlist.segments.filter((segment) => segment.encryption);
+      if (!encryptedSegments.length) {
+        return unsupported("encrypted-layout", "The playlist declares encryption without an applicable identity key.");
+      }
+      for (const segment of encryptedSegments) {
+        const issue = Aes?.validateSegmentEncryption(segment.encryption, segment.sequence);
+        if (issue) return unsupported("encrypted-layout", issue);
+      }
+      return {
+        supported: true,
+        code: "direct-ts-aes128-vod",
+        reason: "VOD · MPEG-TS · muxed A/V · AES-128"
+      };
     }
 
     return {

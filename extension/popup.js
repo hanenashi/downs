@@ -445,6 +445,9 @@ function renderStatusChips(playlist, context, eligibility) {
   } else if (playlist.segmented === "ts") {
     appendChip("Muxed A/V");
   }
+  if (playlist.encrypted) {
+    appendChip(playlist.encryptionMethod || "Encrypted", eligibility?.supported ? "good" : "warn");
+  }
   if (eligibility) {
     appendChip(eligibility.supported ? "Supported" : "Unsupported", eligibility.supported ? "good" : "warn");
   }
@@ -597,14 +600,18 @@ function renderDownloadAction(playlist, response, variantLabel, context, eligibi
     return button;
   }
   section.append(makeDownloadButton("mp4"));
-  section.append(makeDownloadButton("source-bundle"));
+  if (eligibility.code !== "direct-ts-aes128-vod") {
+    section.append(makeDownloadButton("source-bundle"));
+  }
   section.append(
     createElement(
       "p",
       "download-reason",
       context.hasSeparateAudio
         ? `MP4 uses ${context.audioLabel || "the default audio track"}. Source bundle preserves exact fetched tracks for diagnostics.`
-        : "MP4 creates a seekable finished file. Source bundle preserves exact fetched segments for diagnostics."
+        : eligibility.code === "direct-ts-aes128-vod"
+          ? "AES-128 segments are decrypted locally in memory. Keys are never stored; encrypted source bundles are disabled."
+          : "MP4 creates a seekable finished file. Source bundle preserves exact fetched segments for diagnostics."
     )
   );
   return section;
@@ -667,9 +674,13 @@ function renderInspection(response, variantLabel = "", context = {}) {
     inspectorEl.append(
       createElement("p", "notice", "This playlist has no EXT-X-ENDLIST and is live or event-like.")
     );
-  } else if (playlist.encrypted) {
+  } else if (playlist.encrypted && !eligibility?.supported) {
     inspectorEl.append(
       createElement("p", "notice", `${playlist.encryptionMethod} encryption detected. Download support is not implemented yet.`)
+    );
+  } else if (playlist.encrypted) {
+    inspectorEl.append(
+      createElement("p", "notice", "Whole-segment AES-128 will be decrypted locally with Web Crypto. Key bytes are not stored.")
     );
   }
 
