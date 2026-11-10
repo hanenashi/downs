@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const RequestContext = require("../extension/request-context.js");
 
-test("request context retains only an HTTP(S) referer origin", () => {
+test("request context retains the observed HTTP(S) referer without credentials or fragments", () => {
   assert.deepEqual(
     RequestContext.sanitize({
       referer: "https://user:secret@example.test/watch?id=private#player",
@@ -11,13 +11,15 @@ test("request context retains only an HTTP(S) referer origin", () => {
       hasAuthorization: true
     }),
     {
-      referer: "https://example.test/",
+      referer: "https://example.test/watch?id=private",
+      origin: "https://example.test",
       hasCookie: true,
       hasAuthorization: true
     }
   );
   assert.equal(RequestContext.sanitize({ referer: "file:///tmp/watch.html" }).referer, "");
   assert.equal(RequestContext.sanitize({ referer: "not a URL" }).referer, "");
+  assert.equal(RequestContext.sanitize({ referer: `https://example.test/${"x".repeat(2050)}` }).referer, "");
 });
 
 test("referer rule is exact, extension-initiated, and request-only", () => {
@@ -28,7 +30,8 @@ test("referer rule is exact, extension-initiated, and request-only", () => {
     "abcdefghijklmnop"
   );
   assert.deepEqual(rule.action.requestHeaders, [
-    { header: "Referer", operation: "set", value: "https://player.example.test/" }
+    { header: "Referer", operation: "set", value: "https://player.example.test/watch?secret=yes" },
+    { header: "Origin", operation: "set", value: "https://player.example.test" }
   ]);
   assert.deepEqual(rule.condition.initiatorDomains, ["abcdefghijklmnop"]);
   assert.deepEqual(rule.condition.resourceTypes, ["xmlhttprequest"]);

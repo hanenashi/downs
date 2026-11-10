@@ -1,5 +1,21 @@
 # Downs handoff — seek-safe MP4 pass + future companion seam
 
+## 2.12.1 full Referer compatibility fix
+
+Downs previously reduced every observed Referer to its origin before replaying
+extension fetches. Some media hosts gate a selected variant on the player page
+path, so an otherwise valid child playlist could return HTTP 403. Request
+context now preserves the exact HTTP(S) Referer the browser originally sent,
+while removing credentials and fragments and bounding its length, and replays
+its matching Origin. Downs still does not synthesize provenance when no Referer
+was observed, and temporary rules remain limited to one exact
+extension-initiated target URL. The reported 720p child returned HTTP 403 with
+the full Referer alone and HTTP 200 when the matching Origin was also present.
+That child disguises MPEG-TS segments with `.jpeg` names and an image content
+type. For otherwise bounded, clear media playlists whose suffix is unknown,
+Downs now performs one 376-byte ranged probe and requires MPEG-TS sync bytes at
+both packet boundaries before enabling the existing TS DIRECT path.
+
 ## 2.12 AES-128 MPEG-TS DIRECT update
 
 Downs now accepts one deliberately narrow encrypted layout: finite, muxed

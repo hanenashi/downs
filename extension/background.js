@@ -175,6 +175,49 @@ async function withRequestContext(url, context, operation) {
   }
 }
 
+async function readResponsePrefix(response, limit) {
+  if (!response.body?.getReader) {
+    const contentLength = Number(response.headers.get("content-length"));
+    if (!Number.isFinite(contentLength) || contentLength > 64 * 1024) return new Uint8Array();
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return bytes.slice(0, limit);
+  }
+  const reader = response.body.getReader();
+  const prefix = new Uint8Array(limit);
+  let written = 0;
+  try {
+    while (written < limit) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value || 0);
+      const count = Math.min(chunk.byteLength, limit - written);
+      prefix.set(chunk.subarray(0, count), written);
+      written += count;
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+  return prefix.subarray(0, written);
+}
+
+async function probeMpegTs(rawUrl, requestContext, signal) {
+  const url = normalizeUrl(rawUrl);
+  if (!url) return false;
+  try {
+    const response = await withRequestContext(url, requestContext, () => fetch(url, {
+      credentials: "include",
+      cache: "no-store",
+      redirect: "follow",
+      signal,
+      headers: { Range: "bytes=0-375" }
+    }));
+    if (!response.ok) return false;
+    return globalThis.DownsHls.looksLikeMpegTs(await readResponsePrefix(response, 376));
+  } catch (_error) {
+    return false;
+  }
+}
+
 function rememberRequestContext(details) {
   if (details.tabId < 0) {
     return;
@@ -424,6 +467,18 @@ async function inspectPlaylist(rawUrl, requestContext = {}) {
         playlist,
         error: { code: "not-hls", message: playlist.reason }
       };
+    }
+
+    if (
+      playlist.kind === "media" &&
+      playlist.segmented === "unknown" &&
+      !playlist.encrypted &&
+      !playlist.hasByteRanges &&
+      playlist.segments[0]?.url &&
+      await probeMpegTs(playlist.segments[0].url, requestContext, controller.signal)
+    ) {
+      playlist.segmented = "ts";
+      playlist.containerProbe = "mpeg-ts-sync";
     }
 
     return { ok: true, fetch: fetchInfo, playlist };

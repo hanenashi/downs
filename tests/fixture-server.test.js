@@ -30,8 +30,11 @@ test("fixture server binds locally unless remote-device access is explicit", () 
   assert.throws(() => parseHost(["--host"]), /bind address/);
 });
 
-test("referer fixture accepts only the serving page origin", () => {
-  assert.equal(hasFixtureReferer({ headers: { host: "127.0.0.1:8765", referer: "http://127.0.0.1:8765/watch?private=1" } }), true);
+test("referer fixture accepts only the full serving page URL", () => {
+  const origin = "http://127.0.0.1:8765";
+  assert.equal(hasFixtureReferer({ headers: { host: "127.0.0.1:8765", origin, referer: `${origin}/referer-page.html?private=1` } }), true);
+  assert.equal(hasFixtureReferer({ headers: { host: "127.0.0.1:8765", origin, referer: `${origin}/` } }), false);
+  assert.equal(hasFixtureReferer({ headers: { host: "127.0.0.1:8765", referer: `${origin}/referer-page.html` } }), false);
   assert.equal(hasFixtureReferer({ headers: { host: "127.0.0.1:8765" } }), false);
   assert.equal(hasFixtureReferer({ headers: { host: "127.0.0.1:8765", referer: "https://elsewhere.test/" } }), false);
 });
@@ -44,7 +47,8 @@ test("referer fixture returns 403 without context and 200 with context", async (
   const url = `http://127.0.0.1:${port}/referer-required.m3u8`;
 
   assert.equal((await fetch(url)).status, 403);
-  const allowed = await fetch(url, { headers: { Referer: `http://127.0.0.1:${port}/private/watch` } });
+  const origin = `http://127.0.0.1:${port}`;
+  const allowed = await fetch(url, { headers: { Origin: origin, Referer: `${origin}/referer-page.html` } });
   assert.equal(allowed.status, 200);
   assert.match(await allowed.text(), /^#EXTM3U/);
 });

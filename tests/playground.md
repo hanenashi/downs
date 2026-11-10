@@ -40,7 +40,7 @@ bridge, or a product runtime dependency.
 For request-context testing, open
 `http://127.0.0.1:8765/referer-page.html`. Its detected playlist deliberately
 returns HTTP 403 to a plain extension request and HTTP 200 when Downs temporarily
-replays the serving page's Referer origin. This fixture tests request provenance;
+replays the observed full serving-page Referer and matching Origin. This fixture tests request provenance;
 it does not weaken any media support gate.
 
 For the modern separate-track path, generate a 12-second synthetic H.264/AAC

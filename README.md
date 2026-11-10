@@ -18,7 +18,7 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.12 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downs 2.12.1 is experimental. In addition to the bounded MPEG-TS path, persistent
 Downloads manager, request-context replay, and playback grouping, it can now
 assemble a conservative modern HLS layout: finite unencrypted fMP4/CMAF VOD
 with one separate H.264 video track and a user-selected AAC audio rendition.
@@ -38,6 +38,7 @@ It can:
 - list split audio renditions and select among those matching a video variant;
 - identify VOD versus live/event playlists;
 - identify MPEG-TS, fMP4/CMAF, `EXT-X-MAP`, and `EXT-X-KEY`;
+- identify suffix-disguised MPEG-TS through a bounded two-packet byte probe;
 - distinguish ordinary AES-128 metadata from likely protected media;
 - decrypt finite MPEG-TS VOD protected with standard whole-segment AES-128,
   including explicit or media-sequence IVs and identity-key rotation;
@@ -63,9 +64,9 @@ It can:
 - derive finite movie and per-track durations from actual fragment sample timing;
 - name new jobs from the suggested page title, a local date stamp, or a random
   ten-character ID selected in **Settings**;
-- replay a detected player page's origin as Referer while inspecting or fetching
-  that stream, using temporary exact-URL browser rules that are removed after
-  each request;
+- replay the HTTP(S) Referer observed on the detected player request plus its
+  matching Origin while inspecting or fetching that stream, preserving required
+  page paths through temporary exact-URL rules removed after each request;
 - collapse related playlist detections under one primary row while keeping every
   observed URL available through **Show related playlists**.
 
@@ -182,7 +183,7 @@ Use open or user-authorized streams for testing.
 Downs requests HTTP(S) host access because HLS playlists and their child
 renditions may be served from unrelated CDNs. It uses `webRequest` to observe
 playlist requests, temporary `declarativeNetRequest` session rules to replay a
-detected Referer origin on its own exact-URL requests, `storage` to retain small
+detected Referer and matching Origin on its own exact-URL requests, `storage` to retain small
 per-tab metadata and persistent download job records, and `downloads` to export
 a completed MP4 through the browser only after the user chooses **Save to
 device**. Its page-world Blob probe sees only Blob type and size before reading
@@ -312,8 +313,8 @@ It is test tooling only; FFmpeg is not bundled or used by the extension. See
 matrix and interpretation rules.
 
 `http://127.0.0.1:8765/referer-page.html` is the deterministic request-context
-fixture. Its playlist returns HTTP 403 without the serving page's Referer origin
-and HTTP 200 with it.
+fixture. Its playlist returns HTTP 403 without the full serving page Referer and
+matching Origin, and HTTP 200 with them.
 
 Generate the deterministic separate-track fMP4/CMAF fixture, then open its page:
 

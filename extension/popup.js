@@ -480,6 +480,9 @@ function renderTechnicalDetails(response, rootLink) {
     playlist.live ? "warn" : playlist.vod ? "good" : ""
   );
   appendDefinition(details, "Segments", containerLabel(playlist.segmented));
+  if (playlist.containerProbe === "mpeg-ts-sync") {
+    appendDefinition(details, "Container evidence", "MPEG-TS sync-byte probe", "technical");
+  }
   appendDefinition(
     details,
     "Encryption",

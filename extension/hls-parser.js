@@ -121,6 +121,11 @@
     return types.values().next().value || "unknown";
   }
 
+  function looksLikeMpegTs(value) {
+    const bytes = value instanceof Uint8Array ? value : new Uint8Array(value || 0);
+    return bytes.byteLength >= 376 && bytes[0] === 0x47 && bytes[188] === 0x47;
+  }
+
   function isProtectedKey(key) {
     const method = (key.method || "").toUpperCase();
     const format = (key.keyFormat || "identity").toLowerCase();
@@ -351,6 +356,7 @@
   }
 
   return {
+    looksLikeMpegTs,
     parseAttributeList,
     parsePlaylist,
     resolveUrl

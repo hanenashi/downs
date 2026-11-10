@@ -59,7 +59,9 @@ function parseHost(argv) {
 function hasFixtureReferer(request) {
   try {
     const referer = new URL(request.headers.referer || "");
-    return referer.origin === `http://${request.headers.host}`;
+    return referer.origin === `http://${request.headers.host}` &&
+      referer.pathname === "/referer-page.html" &&
+      request.headers.origin === referer.origin;
   } catch (_error) {
     return false;
   }
@@ -73,7 +75,7 @@ function createFixtureServer() {
         "Cache-Control": "no-store",
         "Content-Type": "text/plain; charset=utf-8"
       });
-      response.end("Fixture requires its player-page Referer origin.\n");
+      response.end("Fixture requires its full player-page Referer and matching Origin.\n");
       return;
     }
 

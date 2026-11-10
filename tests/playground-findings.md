@@ -219,3 +219,17 @@ at 320×180 plus 48 kHz AAC; the validator counted 150 frames at 25 fps and a
 full FFmpeg decode completed without errors. The source playlist totaled 6.00
 seconds. This validates the synthetic authorized identity-key path, not
 SAMPLE-AES, DRM, encrypted fMP4, or arbitrary real-site request policies.
+
+## 2026-11-10 — Full Referer, Origin, and disguised MPEG-TS
+
+A reported cross-origin 720p child playlist returned HTTP 403 with its full
+player-page Referer alone, but HTTP 200 when the matching page Origin was also
+present. Chrome-for-Testing 156 exercised the built extension's actual
+background inspector and confirmed its temporary exact-URL rule replayed both
+headers successfully. The 1,870-segment finite VOD then parsed normally.
+
+That playlist names its segment payloads `.jpeg` and serves them as
+`image/jpeg`, although their bytes are MPEG-TS. A bounded 376-byte range probe
+found sync bytes at offsets 0 and 188. Downs classified the stream as MPEG-TS
+and the existing conservative DIRECT gate accepted it as muxed, unencrypted
+VOD. The full multi-hour media download was intentionally not run.

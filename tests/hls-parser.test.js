@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { parseAttributeList, parsePlaylist } = require("../extension/hls-parser.js");
+const { looksLikeMpegTs, parseAttributeList, parsePlaylist } = require("../extension/hls-parser.js");
 
 test("parses quoted attribute lists without splitting codec commas", () => {
   const attributes = parseAttributeList(
@@ -168,4 +168,14 @@ test("returns a useful classification for HTML and other non-HLS bodies", () => 
   const plain = parsePlaylist("access denied", "https://example.com/denied");
   assert.equal(plain.kind, "not-hls");
   assert.match(plain.reason, /#EXTM3U/);
+});
+
+test("recognizes MPEG-TS sync bytes behind a misleading segment suffix", () => {
+  const bytes = new Uint8Array(376);
+  bytes[0] = 0x47;
+  bytes[188] = 0x47;
+  assert.equal(looksLikeMpegTs(bytes), true);
+  bytes[188] = 0xff;
+  assert.equal(looksLikeMpegTs(bytes), false);
+  assert.equal(looksLikeMpegTs(new Uint8Array(188)), false);
 });
