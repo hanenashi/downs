@@ -3,6 +3,9 @@ const ext = globalThis.browser || globalThis.chrome;
 if (!globalThis.DownsHls && typeof importScripts === "function") {
   importScripts("hls-parser.js");
 }
+if (!globalThis.DownsBlobPlaylist && typeof importScripts === "function") {
+  importScripts("blob-playlist-core.js");
+}
 if (!globalThis.DownsDownload && typeof importScripts === "function") {
   importScripts("download-core.js");
 }
@@ -14,6 +17,7 @@ if (!globalThis.DownsRequestContext && typeof importScripts === "function") {
 }
 
 const MAX_LINKS_PER_TAB = 50;
+const MAX_BLOB_LINKS_PER_TAB = 10;
 const MAX_PLAYLIST_BYTES = 5 * 1024 * 1024;
 const PLAYLIST_TIMEOUT_MS = 20_000;
 const REQUEST_RULE_FIRST = 880_000;
@@ -192,6 +196,20 @@ async function setTabLinks(tabId, links) {
   await tabStorageArea.set({ [storageKey(tabId)]: links.slice(0, MAX_LINKS_PER_TAB) });
 }
 
+function publicLink(link) {
+  const { playlistText: _playlistText, ...safe } = link;
+  return safe;
+}
+
+function limitBlobLinks(links) {
+  let blobCount = 0;
+  return links.filter((link) => {
+    if (link.discoverySource !== "blob-playlist") return true;
+    blobCount += 1;
+    return blobCount <= MAX_BLOB_LINKS_PER_TAB;
+  });
+}
+
 function queueTabUpdate(tabId, operation) {
   const previous = tabQueues.get(tabId) || Promise.resolve();
   const next = previous.catch(() => undefined).then(operation);
@@ -251,6 +269,66 @@ async function rememberLink(details) {
     });
     await ext.action.setBadgeBackgroundColor({ tabId: details.tabId, color: "#1f6b3a" });
   });
+}
+
+async function rememberBlobPlaylist(message, sender) {
+  const tabId = sender.tab?.id;
+  if (!Number.isInteger(tabId) || tabId < 0) {
+    return { ok: false, accepted: false };
+  }
+
+  const validation = globalThis.DownsBlobPlaylist.validateCandidate({
+    text: message.text,
+    contentType: message.contentType,
+    baseUrl: message.baseUrl,
+    frameUrl: sender.url || message.frameUrl,
+    pageUrl: sender.tab?.url || message.pageUrl
+  });
+  if (!validation.ok) {
+    return { ok: true, accepted: false, reason: validation.code };
+  }
+
+  const candidate = validation.candidate;
+  await queueTabUpdate(tabId, async () => {
+    const links = await getTabLinks(tabId);
+    const existing = links.find((link) =>
+      link.discoverySource === "blob-playlist" &&
+      link.baseUrl === candidate.baseUrl &&
+      link.playlistText === candidate.text
+    );
+    if (existing) {
+      existing.lastSeenAt = Date.now();
+      existing.hitCount = (existing.hitCount || 1) + 1;
+    } else {
+      const id = createJobId();
+      links.unshift({
+        url: `downs-blob://${id}/playlist.m3u8`,
+        inlinePlaylistId: id,
+        discoverySource: "blob-playlist",
+        playlistText: candidate.text,
+        playlistBytes: candidate.byteLength,
+        baseUrl: candidate.baseUrl,
+        frameUrl: candidate.frameUrl,
+        pageUrl: candidate.pageUrl,
+        initiator: candidate.frameUrl,
+        foundAt: Date.now(),
+        lastSeenAt: Date.now(),
+        hitCount: 1,
+        statusCode: 0,
+        contentType: candidate.contentType,
+        requestContext: {}
+      });
+    }
+
+    const kept = limitBlobLinks(links);
+    await setTabLinks(tabId, kept);
+    await ext.action.setBadgeText({
+      tabId,
+      text: String(Math.min(kept.length, 99))
+    });
+    await ext.action.setBadgeBackgroundColor({ tabId, color: "#1f6b3a" });
+  });
+  return { ok: true, accepted: true };
 }
 
 function forgetRequest(details) {
@@ -341,6 +419,46 @@ async function inspectPlaylist(rawUrl, requestContext = {}) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function inspectBlobPlaylist(inlinePlaylistId) {
+  const [tab] = await ext.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id === undefined) {
+    return { ok: false, error: { code: "missing-tab", message: "The source tab is no longer available." } };
+  }
+  const links = await getTabLinks(tab.id);
+  const link = links.find((candidate) =>
+    candidate.discoverySource === "blob-playlist" &&
+    candidate.inlinePlaylistId === inlinePlaylistId
+  );
+  if (!link?.playlistText) {
+    return {
+      ok: false,
+      error: { code: "missing-blob-playlist", message: "This in-memory playlist is no longer available." }
+    };
+  }
+
+  const playlist = globalThis.DownsHls.parsePlaylist(link.playlistText, link.baseUrl);
+  if (playlist.kind === "not-hls") {
+    return {
+      ok: false,
+      playlist,
+      error: { code: "not-hls", message: playlist.reason }
+    };
+  }
+  return {
+    ok: true,
+    fetch: {
+      status: 0,
+      statusText: "",
+      finalUrl: link.url,
+      contentType: link.contentType,
+      refererReplayed: false,
+      source: "blob-playlist",
+      baseUrl: link.baseUrl
+    },
+    playlist
+  };
 }
 
 function createJobId() {
@@ -464,8 +582,13 @@ ext.tabs.onUpdated.addListener((tabId, changeInfo) => {
   }
 });
 
-ext.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
+    if (message?.type === "blob-playlist-detected") {
+      sendResponse(await rememberBlobPlaylist(message, sender));
+      return;
+    }
+
     if (message?.type === "get-links") {
       const [tab] = await ext.tabs.query({ active: true, currentWindow: true });
       const links = tab?.id === undefined ? [] : await getTabLinks(tab.id);
@@ -474,13 +597,15 @@ ext.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         tabId: tab?.id,
         pageUrl: tab?.url || "",
         pageTitle: tab?.title || "",
-        links
+        links: links.map(publicLink)
       });
       return;
     }
 
     if (message?.type === "inspect-playlist") {
-      sendResponse(await inspectPlaylist(message.url, message.requestContext));
+      sendResponse(message.inlinePlaylistId
+        ? await inspectBlobPlaylist(message.inlinePlaylistId)
+        : await inspectPlaylist(message.url, message.requestContext));
       return;
     }
 

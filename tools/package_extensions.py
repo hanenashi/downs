@@ -13,6 +13,9 @@ BUILD_ROOT = ROOT / "build"
 DIST_DIR = ROOT / "dist"
 FILES = [
     "audio-core.js",
+    "blob-playlist-core.js",
+    "blob-bridge.js",
+    "blob-page.js",
     "hls-parser.js",
     "download-core.js",
     "download-worker.js",

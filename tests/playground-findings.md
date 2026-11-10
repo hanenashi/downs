@@ -183,3 +183,13 @@ The resulting 9,806,259-byte MP4 had SHA-256
 `27720c1e5fc47204512c58ac398a72859840c36f22a9c971779e53bc30112561`;
 FFprobe reported H.264 video at 90.090 seconds and AAC audio at 90.256 seconds.
 The workflow made no source-network requests and removed its extraction tree.
+
+## 2026-11-10 — In-memory Blob playlist discovery
+
+The deterministic Blob fixture creates one 92-byte playlist with
+`application/vnd.apple.mpegurl` and one `text/plain` lookalike. Chrome-for-
+Testing 156 recorded exactly one source with `blob-playlist` provenance. The
+popup parsed it as a finite MPEG-TS media playlist, displayed the intended
+inspection-only support reason at 420×640, had no horizontal overflow, and
+reported no page or popup console warnings/errors. Network download behavior
+was not changed. Firefox and physical Kiwi validation remain pending.

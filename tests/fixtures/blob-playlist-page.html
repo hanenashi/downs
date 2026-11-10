@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="data:,">
+    <title>Downs Blob playlist fixture</title>
+  </head>
+  <body>
+    <h1>Blob playlist fixture</h1>
+    <p>Creates one typed in-memory HLS playlist and one text Blob false positive.</p>
+    <button id="create-playlists" type="button">Create playlist Blobs</button>
+    <output id="result">Waiting</output>
+    <script>
+      document.getElementById("create-playlists").addEventListener("click", () => {
+        window.fixtureBlobs = [
+          new Blob([
+            "#EXTM3U\n",
+            "#EXT-X-VERSION:3\n",
+            "#EXT-X-TARGETDURATION:6\n",
+            "#EXTINF:6,\n",
+            "mux-segment-1.ts\n",
+            "#EXT-X-ENDLIST\n"
+          ], { type: "application/vnd.apple.mpegurl" }),
+          new Blob(["#EXTM3U\nshould-not-be-detected.m3u8\n"], { type: "text/plain" })
+        ];
+        document.getElementById("result").value = "Created";
+      });
+    </script>
+  </body>
+</html>

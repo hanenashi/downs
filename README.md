@@ -12,7 +12,7 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.9 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downs 2.10 is experimental. In addition to the bounded MPEG-TS path, persistent
 Downloads manager, request-context replay, and playback grouping, it can now
 assemble a conservative modern HLS layout: finite unencrypted fMP4/CMAF VOD
 with one separate H.264 video track and a user-selected AAC audio rendition.
@@ -22,6 +22,8 @@ reliable seeking while preserving the source H.264/AAC samples.
 It can:
 
 - detect M3U8 URLs and HLS response content types in the active tab;
+- detect explicitly typed, page-created M3U8 `Blob`s through a size-limited
+  page-world probe and inspect them without widening the download gates;
 - fetch a selected playlist from the extension context with browser credentials;
 - distinguish master, media, and non-HLS responses;
 - list variants with resolution, bandwidth, and codecs;
@@ -78,6 +80,13 @@ select a variant to inspect that child media playlist. A clear **Ready to
 download** block and **Download** button appear only when the selected media
 playlist passes the current DIRECT support checks.
 
+Some players manufacture an HLS manifest in JavaScript instead of requesting
+an M3U8 URL. Downs 2.10 detects Blobs explicitly typed with a standard HLS MIME
+type, validates at most 512 KiB of playlist text in an isolated bridge, and
+labels the result as an **in-memory Blob playlist**. This first pass is
+inspection-only: network child playlists can be inspected normally, but an
+inline media playlist itself cannot enter DIRECT download processing.
+
 The secondary **Source bundle** action creates an advanced `.downs-source.tar`
 diagnostic job instead of a finished MP4. It stores each fetched segment or
 fragment byte-for-byte, with locally replayable playlists and a manifest. It is
@@ -128,8 +137,8 @@ Then use Kiwi's Extensions page in developer mode to load
 Pixel for both MPEG-TS and a generated two-language fMP4 fixture. The Japanese
 alternate rendition survived selection, assembly, device export, and native
 audio-fingerprint validation. The 2.8 interface passed desktop Chromium QA at
-420px and 320px. Downs 2.9's flat finalizer and source bundle now need the next
-physical Kiwi pass. Kiwi may install a new development zip
+420px and 320px. Downs 2.10's in-memory Blob probe now needs its physical Kiwi
+compatibility pass. Kiwi may install a new development zip
 beside an older build rather than replacing it.
 
 Kiwi Browser is discontinued and no longer receives engine maintenance. Downs
@@ -157,7 +166,9 @@ playlist requests, temporary `declarativeNetRequest` session rules to replay a
 detected Referer origin on its own exact-URL requests, `storage` to retain small
 per-tab metadata and persistent download job records, and `downloads` to export
 a completed MP4 through the browser only after the user chooses **Save to
-device**.
+device**. Its page-world Blob probe sees only Blob type and size before reading
+an explicitly HLS-typed candidate; the isolated bridge revalidates the MIME
+type, 512 KiB limit, `#EXTM3U` header, and HTTP(S) base before extension storage.
 
 The extension does not store cookie or authorization values. It records only
 whether those headers were observed. A Referer is reduced to its HTTP(S) origin
@@ -203,6 +214,9 @@ Run the parser tests and source checks:
 ```bash
 node --test tests/*.test.js
 node --check extension/audio-core.js
+node --check extension/blob-playlist-core.js
+node --check extension/blob-bridge.js
+node --check extension/blob-page.js
 node --check extension/hls-parser.js
 node --check extension/download-core.js
 node --check extension/download-worker.js
@@ -244,6 +258,11 @@ For repeatable browser/remux QA, start the development-only fixture page:
 ```bash
 node tools/serve-fixtures.js
 ```
+
+`http://127.0.0.1:8765/blob-playlist-page.html` is the deterministic Blob
+discovery fixture. Choose **Create playlist Blobs**, refresh the Downs popup,
+and inspect the single detected in-memory playlist; its `text/plain` lookalike
+must not be recorded.
 
 After exporting its three-segment MP4 from Downs, validate the complete file
 with native FFprobe/FFmpeg development tools:
@@ -297,10 +316,9 @@ extension packages.
 
 ## Direction
 
-The immediate work is real-world VLC/Kiwi testing of flat 2.9 MP4 output and the
-opt-in source diagnostic bundle. Dark mode, editable preflight filenames, and
-broader manager-row interactions remain separate UI passes. Broader fMP4
-compatibility, larger-file stress testing, and Firefox verification remain next
-for DIRECT; CAPTURE and DUMP stay later, separate strategies.
+The immediate work is real-site Firefox/Kiwi validation of 2.10 Blob discovery,
+without relaxing the stable 2.9 DIRECT gates. AES-128 TS, DASH feasibility, and
+live RECORD remain separate backlog passes. Dark mode, editable preflight
+filenames, and broader manager-row interactions remain separate UI work.
 
 Small streams. Clear answers. No cathedral.

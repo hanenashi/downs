@@ -28,6 +28,10 @@ Do **not** regress the above or introduce a mandatory native helper, FFmpeg, ser
 
 ### A1. In-memory Blob M3U8 detector
 
+Implementation status: bounded detection and inspection landed in Downs 2.10;
+real-site Firefox/Kiwi compatibility remains a validation item. Inline media
+playlists intentionally remain inspection-only.
+
 Upstream code:
 - `v3/plugins/blob-detector/inject/main.js`
 - `v3/plugins/blob-detector/inject/isolated.js`

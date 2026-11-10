@@ -1,5 +1,25 @@
 # Downs handoff — seek-safe MP4 pass + future companion seam
 
+## 2.10 Blob playlist discovery update
+
+Downs now observes page-created Blobs only when they declare one of the standard
+HLS MIME types. A document-start MAIN-world proxy preserves native Blob instances
+and passes bounded text to an isolated content-script bridge. The bridge and
+background both require an HTTP(S) base, a valid `#EXTM3U` header, and no more
+than 512 KiB. Exact duplicates are folded together and at most ten inline
+playlists are retained per tab.
+
+The popup labels provenance explicitly and parses relative references against
+the creating frame's base URL. Inline media playlists remain inspection-only;
+normal network child playlists from an inline master return to the established
+URL-based inspection/download path. The existing DIRECT worker, request-context
+rules, finalizer, and source-bundle logic are unchanged.
+
+The deterministic fixture passed Chrome-for-Testing 156 at 420×640: one typed
+playlist was detected, its `text/plain` lookalike was ignored, the inspection
+showed the intentional unsupported reason, horizontal overflow was absent, and
+the page/popup console was clean. Physical Kiwi and Firefox testing remains.
+
 ## 2.9 implementation update
 
 The decisive A/B test used one real 22:52 Downs output with 344 genuine

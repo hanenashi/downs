@@ -10,6 +10,9 @@ const manifests = ["manifest.json", "manifest.firefox.json"];
 const requiredFiles = [
   "audio-core.js",
   "background.js",
+  "blob-bridge.js",
+  "blob-page.js",
+  "blob-playlist-core.js",
   "download-core.js",
   "download-worker.js",
   "fmp4-core.js",
@@ -65,6 +68,17 @@ for (const manifestName of manifests) {
     manifest.host_permissions,
     ["http://*/*", "https://*/*"],
     `${manifestName} should request only HTTP(S) host access`
+  );
+  assert.equal(manifest.content_scripts?.length, 2, `${manifestName} needs isolated and page-world Blob scripts`);
+  assert.deepEqual(
+    manifest.content_scripts[0].js,
+    ["blob-playlist-core.js", "blob-bridge.js"],
+    `${manifestName} must validate Blob messages in an isolated bridge`
+  );
+  assert.equal(
+    manifest.content_scripts[1].world,
+    "MAIN",
+    `${manifestName} must observe the page's Blob constructor in the main world`
   );
 }
 

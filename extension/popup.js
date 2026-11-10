@@ -41,6 +41,9 @@ function streamName(link, index, primary = false) {
   if (primary && activePageTitle) {
     return activePageTitle;
   }
+  if (link.discoverySource === "blob-playlist") {
+    return `In-memory HLS playlist ${index + 1}`;
+  }
   try {
     const url = new URL(link.url);
     const filename = decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || "");
@@ -63,6 +66,13 @@ function compactUrl(rawUrl) {
   } catch (_error) {
     return "HLS playlist";
   }
+}
+
+function streamSummary(link) {
+  if (link.discoverySource === "blob-playlist") {
+    return "HLS · in-memory Blob playlist";
+  }
+  return compactUrl(link.url);
 }
 
 function countLabel(count, singular, plural = `${singular}s`) {
@@ -202,7 +212,7 @@ function streamRow(link, index, { primary = false } = {}) {
       createElement(
         "span",
         showFullUrls ? "stream-url" : "stream-summary",
-        showFullUrls ? link.url : inspectionSummaries.get(link.url) || compactUrl(link.url)
+        showFullUrls ? link.url : inspectionSummaries.get(link.url) || streamSummary(link)
       )
     );
     button.append(copy);
@@ -213,7 +223,11 @@ function streamRow(link, index, { primary = false } = {}) {
       parentInspection = null;
       activeInspection = null;
       renderLinks();
-      inspectUrl(link.url, "", { requestContext: link.requestContext || {} });
+      inspectUrl(link.url, "", {
+        requestContext: link.requestContext || {},
+        inlinePlaylistId: link.inlinePlaylistId || "",
+        discoverySource: link.discoverySource || "network"
+      });
     });
 
   return button;
@@ -356,6 +370,8 @@ function renderVariants(playlist) {
       const hasSeparateAudio = Boolean(variant.audioGroup && matchingAudio.length);
       inspectUrl(variant.url, label, {
         ...activeInspection.context,
+        inlinePlaylistId: "",
+        discoverySource: "network",
         hasSeparateAudio,
         audioRenditions: matchingAudio,
         audioPlaylistUrl: audioRendition?.url || "",
@@ -440,7 +456,14 @@ function renderTechnicalDetails(response, rootLink) {
   disclosure.append(createElement("summary", "", "Technical details"));
 
   const details = createElement("dl", "inspection-grid");
-  appendUrlDefinition(details, "Playlist", response.fetch.finalUrl);
+  if (response.fetch.source === "blob-playlist") {
+    appendDefinition(details, "Playlist", "In-memory Blob playlist");
+    appendUrlDefinition(details, "Base URL", response.fetch.baseUrl);
+    appendDefinition(details, "Discovery", "Page-created Blob");
+  } else {
+    appendUrlDefinition(details, "Playlist", response.fetch.finalUrl);
+    appendDefinition(details, "Discovery", "Network request");
+  }
   appendDefinition(
     details,
     "Kind",
@@ -460,7 +483,9 @@ function renderTechnicalDetails(response, rootLink) {
     playlist.drm ? "bad" : playlist.encrypted ? "warn" : "good"
   );
   appendDefinition(details, "EXT-X-MAP", playlist.mapUrl ? "Present" : "Not present");
-  appendDefinition(details, "Response", `HTTP ${response.fetch.status}`, "technical");
+  if (response.fetch.status) {
+    appendDefinition(details, "Response", `HTTP ${response.fetch.status}`, "technical");
+  }
 
   if (rootLink?.requestContext?.hasCookie || rootLink?.requestContext?.hasAuthorization) {
     const observations = [
@@ -589,7 +614,13 @@ function renderInspection(response, variantLabel = "", context = {}) {
   const playlist = response.playlist;
   const rootLink = selectedLink();
   const eligibility = playlist.kind === "media"
-    ? globalThis.DownsDownload.validateDirectPlaylist(playlist, context)
+    ? context.discoverySource === "blob-playlist"
+      ? {
+          supported: false,
+          code: "blob-inspection-only",
+          reason: "In-memory playlist discovery is inspection-only in this pass."
+        }
+      : globalThis.DownsDownload.validateDirectPlaylist(playlist, context)
     : null;
   inspectorEl.hidden = false;
   inspectorEl.textContent = "";
@@ -666,6 +697,7 @@ async function inspectUrl(url, variantLabel = "", context = {}) {
     const response = await ext.runtime.sendMessage({
       type: "inspect-playlist",
       url,
+      inlinePlaylistId: context.inlinePlaylistId || "",
       requestContext: context.requestContext || {}
     });
     if (!response?.ok) {

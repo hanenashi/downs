@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Downs",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "description": "Detect HLS streams, assemble supported VOD as MP4, and manage private downloads.",
   "icons": {
     "16": "icons/icon-16.png",
@@ -12,8 +12,23 @@
   "permissions": ["declarativeNetRequest", "downloads", "storage", "tabs", "webRequest"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": {
-    "scripts": ["hls-parser.js", "download-core.js", "job-core.js", "request-context.js", "background.js"]
+    "scripts": ["hls-parser.js", "blob-playlist-core.js", "download-core.js", "job-core.js", "request-context.js", "background.js"]
   },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["blob-playlist-core.js", "blob-bridge.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["blob-page.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "world": "MAIN"
+    }
+  ],
   "action": {
     "default_icon": {
       "16": "icons/icon-16.png",
