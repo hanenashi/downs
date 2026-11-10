@@ -41,6 +41,14 @@ FILES = [
     "vendor/mux-mp4.min.js",
     "vendor/LICENSE.mux.js",
 ]
+ZIP_TIMESTAMP = (1980, 1, 1, 0, 0, 0)
+
+
+def add_archive_file(archive, path, archive_name):
+    info = zipfile.ZipInfo(str(archive_name), ZIP_TIMESTAMP)
+    info.compress_type = zipfile.ZIP_DEFLATED
+    info.external_attr = 0o100644 << 16
+    archive.writestr(info, path.read_bytes())
 
 
 def build_flavor(name, manifest_name, archive_name):
@@ -65,7 +73,7 @@ def build_flavor(name, manifest_name, archive_name):
 
     with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(path for path in build_dir.rglob("*") if path.is_file()):
-            archive.write(path, path.relative_to(build_dir))
+            add_archive_file(archive, path, path.relative_to(build_dir))
 
     print(f"{name.title()} unpacked extension: {build_dir}")
     print(f"{name.title()} extension zip: {archive_path}")

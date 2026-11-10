@@ -1,5 +1,11 @@
 <div align="center">
   <img src="downs.png" alt="Downs icon" width="220">
+
+  <p>
+    <a href="https://raw.githubusercontent.com/hanenashi/downs/main/dist/downs-chromium.zip"><strong>Download for Chromium / Kiwi</strong></a>
+    ·
+    <a href="https://raw.githubusercontent.com/hanenashi/downs/main/dist/downs-firefox.zip"><strong>Download for Firefox</strong></a>
+  </p>
 </div>
 
 # Downs
