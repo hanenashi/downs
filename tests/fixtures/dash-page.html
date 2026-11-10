@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="data:,">
+    <title>Downs DASH fixture</title>
+  </head>
+  <body>
+    <h1>DASH discovery fixture</h1>
+    <button id="request-mpd" type="button">Request MPD</button>
+    <output id="result">Waiting</output>
+    <script>
+      document.getElementById("request-mpd").addEventListener("click", async () => {
+        const response = await fetch("sample.mpd", { cache: "no-store" });
+        const body = await response.text();
+        document.getElementById("result").value = body.startsWith("<?xml") ? "Loaded" : "Failed";
+      });
+    </script>
+  </body>
+</html>

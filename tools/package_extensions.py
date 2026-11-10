@@ -16,6 +16,7 @@ FILES = [
     "blob-playlist-core.js",
     "blob-bridge.js",
     "blob-page.js",
+    "dash-parser.js",
     "hls-parser.js",
     "download-core.js",
     "download-worker.js",

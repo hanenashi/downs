@@ -10,6 +10,7 @@ const modernFixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "moder
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".m3u8", "application/vnd.apple.mpegurl; charset=utf-8"],
+  [".mpd", "application/dash+xml; charset=utf-8"],
   [".ts", "video/mp2t"],
   [".mp4", "video/mp4"],
   [".m4s", "video/iso.segment"]

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Downs",
-  "version": "2.10.0",
-  "description": "Detect HLS streams, assemble supported VOD as MP4, and manage private downloads.",
+  "version": "2.11.0",
+  "description": "Inspect HLS and DASH streams, assemble supported HLS VOD as MP4, and manage private downloads.",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
@@ -35,6 +35,6 @@
       "32": "icons/icon-32.png"
     },
     "default_popup": "popup.html",
-    "default_title": "Inspect HLS streams with Downs"
+    "default_title": "Inspect HLS and DASH streams with Downs"
   }
 }

@@ -511,6 +511,20 @@ h1 {
   color: var(--muted);
 }
 
+.dash-representation-list li {
+  align-items: flex-start;
+}
+
+.dash-representation-list strong {
+  flex: 0 0 auto;
+}
+
+.dash-representation-list span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
 .notice {
   margin: 14px 0 0;
   padding: 10px 12px;

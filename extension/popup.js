@@ -47,13 +47,13 @@ function streamName(link, index, primary = false) {
   try {
     const url = new URL(link.url);
     const filename = decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || "");
-    return filename || `HLS playlist ${index + 1}`;
+    return filename || (link.mediaType === "dash" ? `DASH manifest ${index + 1}` : `HLS playlist ${index + 1}`);
   } catch (_error) {
-    return `HLS playlist ${index + 1}`;
+    return link.mediaType === "dash" ? `DASH manifest ${index + 1}` : `HLS playlist ${index + 1}`;
   }
 }
 
-function compactUrl(rawUrl) {
+function compactUrl(rawUrl, prefix = "HLS") {
   try {
     const url = new URL(rawUrl);
     let path = url.pathname || "/";
@@ -62,9 +62,9 @@ function compactUrl(rawUrl) {
     } catch (_error) {
       // Preserve the encoded path when it contains a malformed escape.
     }
-    return `HLS · ${url.hostname}${path === "/" ? "" : path}`;
+    return `${prefix} · ${url.hostname}${path === "/" ? "" : path}`;
   } catch (_error) {
-    return "HLS playlist";
+    return `${prefix} manifest`;
   }
 }
 
@@ -72,7 +72,7 @@ function streamSummary(link) {
   if (link.discoverySource === "blob-playlist") {
     return "HLS · in-memory Blob playlist";
   }
-  return compactUrl(link.url);
+  return compactUrl(link.url, link.mediaType === "dash" ? "DASH" : "HLS");
 }
 
 function countLabel(count, singular, plural = `${singular}s`) {
@@ -226,7 +226,8 @@ function streamRow(link, index, { primary = false } = {}) {
       inspectUrl(link.url, "", {
         requestContext: link.requestContext || {},
         inlinePlaylistId: link.inlinePlaylistId || "",
-        discoverySource: link.discoverySource || "network"
+        discoverySource: link.discoverySource || "network",
+        mediaType: link.mediaType || "hls"
       });
     });
 
@@ -298,7 +299,7 @@ function renderLoading(url) {
   inspectorEl.hidden = false;
   inspectorEl.textContent = "";
   const loading = createElement("div", "loading");
-  loading.append(createElement("strong", "", "Inspecting playlist…"));
+  loading.append(createElement("strong", "", "Inspecting media manifest…"));
   loading.append(createElement("div", "value-url", url));
   inspectorEl.append(loading);
 }
@@ -308,11 +309,11 @@ function renderError(response, url) {
   inspectorEl.textContent = "";
 
   const head = createElement("div", "inspector-head");
-  head.append(createElement("h2", "", "Could not inspect playlist"));
+  head.append(createElement("h2", "", "Could not inspect manifest"));
   inspectorEl.append(head);
 
   const details = createElement("dl", "inspection-grid");
-  appendDefinition(details, "Playlist", response?.fetch?.finalUrl || url, "value-url");
+  appendDefinition(details, "Manifest", response?.fetch?.finalUrl || url, "value-url");
   if (response?.fetch?.status) {
     appendDefinition(
       details,
@@ -327,14 +328,14 @@ function renderError(response, url) {
   const notice = createElement(
     "p",
     "notice error",
-    response?.error?.message || "The extension could not inspect this playlist."
+    response?.error?.message || "The extension could not inspect this manifest."
   );
   inspectorEl.append(notice);
   inspectorEl.append(
     createElement(
       "p",
       "inspector-note",
-      "No media was downloaded. The playlist request stayed inside the extension."
+      "No media was downloaded. The manifest request stayed inside the extension."
     )
   );
 }
@@ -690,6 +691,106 @@ function renderInspection(response, variantLabel = "", context = {}) {
   );
 }
 
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds)) return "Not declared";
+  const total = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const remainder = total % 60;
+  return hours
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
+    : `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
+function renderDashRepresentations(title, representations) {
+  if (!representations.length) return null;
+  const section = createElement("section", "subsection");
+  section.append(createElement("h3", "", `${title} (${representations.length})`));
+  const list = createElement("ul", "rendition-list dash-representation-list");
+  for (const representation of representations.slice(0, 50)) {
+    const item = document.createElement("li");
+    const dimensions = representation.width && representation.height
+      ? `${representation.width}×${representation.height}`
+      : representation.audioSamplingRate
+        ? `${representation.audioSamplingRate.toLocaleString()} Hz`
+        : representation.id || representation.kind;
+    item.append(createElement("strong", "", dimensions));
+    item.append(createElement(
+      "span",
+      "",
+      [
+        representation.bandwidth ? formatBandwidth(representation.bandwidth) : "",
+        representation.codecs,
+        representation.language,
+        representation.mode,
+        representation.protected ? "protected" : ""
+      ].filter(Boolean).join(" · ") || "metadata only"
+    ));
+    list.append(item);
+  }
+  section.append(list);
+  if (representations.length > 50) {
+    section.append(createElement("p", "notice", `Showing the first 50 of ${representations.length} representations.`));
+  }
+  return section;
+}
+
+function renderDashInspection(response) {
+  activeInspection = { response, variantLabel: "", context: { mediaType: "dash" } };
+  const dash = response.dash;
+  inspectorEl.hidden = false;
+  inspectorEl.textContent = "";
+
+  const head = createElement("div", "inspector-head");
+  head.append(createElement("h2", "", "DASH manifest"));
+  inspectorEl.append(head);
+
+  const chips = createElement("div", "status-chips");
+  chips.append(createElement("span", "status-chip", dash.dynamic ? "Dynamic / live" : "Static VOD"));
+  chips.append(createElement("span", "status-chip", countLabel(dash.representations.length, "representation")));
+  chips.append(createElement("span", `status-chip ${dash.encrypted ? "warn" : "good"}`, dash.encrypted ? "Protected" : "Clear"));
+  chips.append(createElement("span", "status-chip warn", "Inspection only"));
+  inspectorEl.append(chips);
+
+  const disclosure = createElement("details", "technical-details");
+  disclosure.append(createElement("summary", "", "Technical details"));
+  const details = createElement("dl", "inspection-grid");
+  appendUrlDefinition(details, "Manifest", response.fetch.finalUrl);
+  appendDefinition(details, "Discovery", "Network request");
+  appendDefinition(details, "Presentation", dash.dynamic ? "Dynamic / live" : "Static");
+  appendDefinition(details, "Duration", formatDuration(dash.durationSeconds));
+  appendDefinition(details, "Periods", String(dash.periodCount));
+  appendDefinition(details, "Addressing", dash.addressing.join(" + ") || "Not declared");
+  appendDefinition(details, "Protection", dash.encrypted ? countLabel(dash.protections.length, "descriptor") : "None");
+  appendDefinition(details, "Response", `HTTP ${response.fetch.status}`, "technical");
+  disclosure.append(details);
+  inspectorEl.append(disclosure);
+
+  for (const [title, representations] of [
+    ["Video", dash.videoRepresentations],
+    ["Audio", dash.audioRepresentations],
+    ["Other", dash.otherRepresentations]
+  ]) {
+    const section = renderDashRepresentations(title, representations);
+    if (section) inspectorEl.append(section);
+  }
+  for (const warning of dash.warnings || []) {
+    inspectorEl.append(createElement("p", "notice", warning));
+  }
+  inspectorEl.append(createElement(
+    "p",
+    "notice",
+    dash.encrypted
+      ? "Protected DASH is inspection-only. Downs will not attempt to bypass DRM or CENC."
+      : "DASH download support is not implemented. This manifest was inspected only."
+  ));
+  inspectorEl.append(createElement(
+    "p",
+    "inspector-note",
+    "MPD parsing stays inside the extension. No DASH media was downloaded."
+  ));
+}
+
 async function inspectUrl(url, variantLabel = "", context = {}) {
   renderLoading(url);
 
@@ -698,10 +799,22 @@ async function inspectUrl(url, variantLabel = "", context = {}) {
       type: "inspect-playlist",
       url,
       inlinePlaylistId: context.inlinePlaylistId || "",
+      mediaType: context.mediaType || "hls",
       requestContext: context.requestContext || {}
     });
     if (!response?.ok) {
       renderError(response, url);
+      return;
+    }
+    if (response.dash) {
+      const summary = [
+        response.dash.dynamic ? "Dynamic DASH" : "Static DASH",
+        countLabel(response.dash.representations.length, "representation")
+      ].join(" · ");
+      inspectionSummaries.set(url, summary);
+      if (response.fetch.finalUrl) inspectionSummaries.set(response.fetch.finalUrl, summary);
+      renderLinks();
+      renderDashInspection(response);
       return;
     }
     const summary = playlistSummary(response.playlist, variantLabel);
@@ -719,7 +832,7 @@ async function inspectUrl(url, variantLabel = "", context = {}) {
 
 async function loadLinks() {
   refreshButton.disabled = true;
-  setStatus("Looking for HLS traffic on this tab…");
+  setStatus("Looking for HLS or DASH traffic on this tab…");
 
   try {
     const response = await ext.runtime.sendMessage({ type: "get-links" });
@@ -742,7 +855,7 @@ async function loadLinks() {
           : `${detectedLinks.length} playlists across ${groupCount} playback${groupCount === 1 ? "" : "s"}`
       );
     } else {
-      setStatus("Waiting for HLS traffic on this tab");
+      setStatus("Waiting for HLS or DASH traffic on this tab");
     }
   } catch (error) {
     detectedLinks = [];

@@ -1,5 +1,21 @@
 # Downs handoff — seek-safe MP4 pass + future companion seam
 
+## 2.11 DASH inspection update
+
+Downs now detects `.mpd`, `application/dash+xml`, and DVB DASH-playlist response
+types through the existing network observer. A dependency-free bounded parser
+rejects DOCTYPE/ENTITY declarations and malformed XML, then summarizes static
+versus dynamic presentation, duration, periods, inherited BaseURLs, video/audio
+representations, codecs, ContentProtection, and SegmentTemplate/Timeline,
+SegmentList, or SegmentBase addressing.
+
+The popup labels all DASH results **Inspection only** and never renders MP4 or
+source-bundle actions for them. The HLS inspector and DIRECT worker were not
+widened. A deterministic static MPD passed Chrome-for-Testing 156 at 420px and
+320px: two video plus one audio representation rendered, no download controls
+appeared, and page/popup consoles were clean. Firefox and physical Kiwi remain
+manual compatibility targets.
+
 ## 2.10 Blob playlist discovery update
 
 Downs now observes page-created Blobs only when they declare one of the standard

@@ -13,6 +13,7 @@ const requiredFiles = [
   "blob-bridge.js",
   "blob-page.js",
   "blob-playlist-core.js",
+  "dash-parser.js",
   "download-core.js",
   "download-worker.js",
   "fmp4-core.js",

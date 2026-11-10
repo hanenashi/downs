@@ -6,6 +6,9 @@ if (!globalThis.DownsHls && typeof importScripts === "function") {
 if (!globalThis.DownsBlobPlaylist && typeof importScripts === "function") {
   importScripts("blob-playlist-core.js");
 }
+if (!globalThis.DownsDash && typeof importScripts === "function") {
+  importScripts("dash-parser.js");
+}
 if (!globalThis.DownsDownload && typeof importScripts === "function") {
   importScripts("download-core.js");
 }
@@ -51,19 +54,31 @@ function responseHeader(details, wantedName) {
   return header?.value || "";
 }
 
-function looksLikeHls(details) {
+function manifestKind(details) {
   const url = details.url || "";
   if (/\.m3u8(?:$|[?#])/i.test(url)) {
-    return true;
+    return "hls";
+  }
+  if (/\.mpd(?:$|[?#])/i.test(url)) {
+    return "dash";
   }
 
   const contentType = responseHeader(details, "content-type").toLowerCase();
-  return [
+  if ([
     "application/vnd.apple.mpegurl",
     "application/x-mpegurl",
     "audio/mpegurl",
     "audio/x-mpegurl"
-  ].some((type) => contentType.includes(type));
+  ].some((type) => contentType.includes(type))) {
+    return "hls";
+  }
+  if (
+    contentType.includes("application/dash+xml") ||
+    contentType.includes("application/vnd.dvb.dash-playlist+xml")
+  ) {
+    return "dash";
+  }
+  return "";
 }
 
 function summarizeRequestHeaders(details) {
@@ -224,7 +239,8 @@ function queueTabUpdate(tabId, operation) {
 }
 
 async function rememberLink(details) {
-  if (details.tabId < 0 || !looksLikeHls(details)) {
+  const mediaType = manifestKind(details);
+  if (details.tabId < 0 || !mediaType) {
     requestContexts.delete(details.requestId);
     return;
   }
@@ -248,6 +264,7 @@ async function rememberLink(details) {
       existing.statusCode = details.statusCode;
       existing.contentType = responseHeader(details, "content-type");
       existing.requestContext = requestContext;
+      existing.mediaType = mediaType;
     } else {
       links.unshift({
         url,
@@ -258,6 +275,8 @@ async function rememberLink(details) {
         hitCount: 1,
         statusCode: details.statusCode,
         contentType: responseHeader(details, "content-type"),
+        mediaType,
+        discoverySource: "network",
         requestContext
       });
     }
@@ -414,6 +433,90 @@ async function inspectPlaylist(rawUrl, requestContext = {}) {
         message: timedOut
           ? "Playlist request timed out after 20 seconds."
           : `Playlist request failed: ${error?.message || "unknown network error"}`
+      }
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function inspectDash(rawUrl, requestContext = {}) {
+  const url = normalizeUrl(rawUrl);
+  if (!url) {
+    return { ok: false, error: { code: "invalid-url", message: "This is not an HTTP or HTTPS URL." } };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PLAYLIST_TIMEOUT_MS);
+  try {
+    let refererReplayed = false;
+    const response = await withRequestContext(url, requestContext, async (replayed) => {
+      refererReplayed = replayed;
+      return fetch(url, {
+        credentials: "include",
+        cache: "no-store",
+        redirect: "follow",
+        signal: controller.signal,
+        headers: { Accept: "application/dash+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.1" }
+      });
+    });
+
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > MAX_PLAYLIST_BYTES) {
+      return { ok: false, error: { code: "too-large", message: "The response is too large to be a DASH MPD." } };
+    }
+    const body = await response.text();
+    if (new TextEncoder().encode(body).byteLength > MAX_PLAYLIST_BYTES) {
+      return { ok: false, error: { code: "too-large", message: "The response is too large to be a DASH MPD." } };
+    }
+
+    const fetchInfo = {
+      status: response.status,
+      statusText: response.statusText,
+      finalUrl: response.url || url,
+      contentType: response.headers.get("content-type") || "",
+      refererReplayed,
+      source: "network"
+    };
+    if (!response.ok) {
+      return {
+        ok: false,
+        fetch: fetchInfo,
+        error: {
+          code: "http",
+          message: `MPD request failed with HTTP ${response.status}${response.statusText ? ` ${response.statusText}` : ""}.`
+        }
+      };
+    }
+
+    let dash;
+    try {
+      dash = globalThis.DownsDash.parseMpd(body, fetchInfo.finalUrl);
+    } catch (error) {
+      return {
+        ok: false,
+        fetch: fetchInfo,
+        error: { code: "invalid-mpd", message: `The MPD XML is invalid: ${error?.message || "parse error"}` }
+      };
+    }
+    if (dash.kind !== "dash") {
+      return {
+        ok: false,
+        fetch: fetchInfo,
+        dash,
+        error: { code: "not-dash", message: dash.reason }
+      };
+    }
+    return { ok: true, fetch: fetchInfo, dash };
+  } catch (error) {
+    const timedOut = error?.name === "AbortError";
+    return {
+      ok: false,
+      error: {
+        code: timedOut ? "timeout" : "network",
+        message: timedOut
+          ? "MPD request timed out after 20 seconds."
+          : `MPD request failed: ${error?.message || "unknown network error"}`
       }
     };
   } finally {
@@ -605,7 +708,9 @@ ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message?.type === "inspect-playlist") {
       sendResponse(message.inlinePlaylistId
         ? await inspectBlobPlaylist(message.inlinePlaylistId)
-        : await inspectPlaylist(message.url, message.requestContext));
+        : message.mediaType === "dash"
+          ? await inspectDash(message.url, message.requestContext)
+          : await inspectPlaylist(message.url, message.requestContext));
       return;
     }
 

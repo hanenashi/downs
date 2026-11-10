@@ -52,6 +52,9 @@ Acceptance: a known in-memory HLS manifest is detected/inspectable when no URL-b
 
 ### A2. DASH / MPD discovery before download support
 
+Implementation status: the detection/inspection milestone landed in Downs
+2.11. MPDs remain outside DIRECT; the later feasibility spike has not started.
+
 Upstream:
 - `v3/network/core.js` registers `.mpd` among candidate extensions.
 - `v3/data/job/parse.js` uses an MPD parser and enumerates representations.
@@ -108,7 +111,7 @@ Tests: fixture server with shifting live window, late arrival, repeated URLs, se
 
 ## Proposed order of work for Codex/Beechan
 
-1. **Detection-only pass:** scoped Blob playlist discovery plus MPD inspection; no changes to output engine. Test desktop Chromium, Firefox, physical Kiwi where possible.
+1. **Detection-only pass:** complete in 2.10/2.11 for scoped Blob playlist discovery and MPD inspection; Firefox/physical Kiwi validation remains.
 2. **AES-128 TS DIRECT pass:** separately gated, with synthetic encrypted fixtures and regression playback tests.
 3. **DASH feasibility spike:** one conservative finite H.264/AAC MPD fixture into existing fMP4 finalization, or document blockers rather than widening gates irresponsibly.
 4. **Live RECORD architecture proposal:** design state, segment identity, storage and recovery; implement only after review.

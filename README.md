@@ -4,15 +4,15 @@
 
 # Downs
 
-A small browser extension for detecting, inspecting, and directly saving a
-carefully bounded subset of HLS streams from the browser session that is
-already playing them.
+A small browser extension for detecting and inspecting HLS/DASH manifests, and
+directly saving a carefully bounded subset of HLS streams from the browser
+session that is already playing them.
 
 No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.10 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downs 2.11 is experimental. In addition to the bounded MPEG-TS path, persistent
 Downloads manager, request-context replay, and playback grouping, it can now
 assemble a conservative modern HLS layout: finite unencrypted fMP4/CMAF VOD
 with one separate H.264 video track and a user-selected AAC audio rendition.
@@ -22,6 +22,8 @@ reliable seeking while preserving the source H.264/AAC samples.
 It can:
 
 - detect M3U8 URLs and HLS response content types in the active tab;
+- detect MPD URLs and DASH response content types, then safely inspect static or
+  dynamic presentations, representations, codecs, protection, and addressing;
 - detect explicitly typed, page-created M3U8 `Blob`s through a size-limited
   page-world probe and inspect them without widening the download gates;
 - fetch a selected playlist from the extension context with browser credentials;
@@ -86,6 +88,12 @@ type, validates at most 512 KiB of playlist text in an isolated bridge, and
 labels the result as an **in-memory Blob playlist**. This first pass is
 inspection-only: network child playlists can be inspected normally, but an
 inline media playlist itself cannot enter DIRECT download processing.
+
+DASH MPDs are also inspection-only in 2.11. Downs accepts bounded XML without
+DOCTYPE or ENTITY declarations, resolves ordinary BaseURL inheritance, and
+summarizes Period, AdaptationSet, Representation, ContentProtection,
+SegmentTemplate/SegmentTimeline, SegmentList, and SegmentBase metadata. MPD
+detection never enables an HLS download button or claims general DASH support.
 
 The secondary **Source bundle** action creates an advanced `.downs-source.tar`
 diagnostic job instead of a finished MP4. It stores each fetched segment or
@@ -206,6 +214,8 @@ they do contain the complete downloaded media and should be shared deliberately.
   OPFS-backed outputs survive closing the tab.
 - Firefox has a generated experimental build, but Chrome desktop and Kiwi are
   the first compatibility targets.
+- DASH is discovery/inspection only. MPD representations are never queued into
+  the DIRECT HLS worker in 2.11.
 
 ## Development
 
@@ -217,6 +227,7 @@ node --check extension/audio-core.js
 node --check extension/blob-playlist-core.js
 node --check extension/blob-bridge.js
 node --check extension/blob-page.js
+node --check extension/dash-parser.js
 node --check extension/hls-parser.js
 node --check extension/download-core.js
 node --check extension/download-worker.js
@@ -263,6 +274,11 @@ node tools/serve-fixtures.js
 discovery fixture. Choose **Create playlist Blobs**, refresh the Downs popup,
 and inspect the single detected in-memory playlist; its `text/plain` lookalike
 must not be recorded.
+
+`http://127.0.0.1:8765/dash-page.html` requests a deterministic static MPD with
+two H.264 video representations, one AAC audio representation, inherited
+BaseURLs, and SegmentTimelines. The popup must label it **Inspection only** and
+must not render MP4 or source-bundle download actions.
 
 After exporting its three-segment MP4 from Downs, validate the complete file
 with native FFprobe/FFmpeg development tools:
@@ -316,9 +332,10 @@ extension packages.
 
 ## Direction
 
-The immediate work is real-site Firefox/Kiwi validation of 2.10 Blob discovery,
-without relaxing the stable 2.9 DIRECT gates. AES-128 TS, DASH feasibility, and
-live RECORD remain separate backlog passes. Dark mode, editable preflight
-filenames, and broader manager-row interactions remain separate UI work.
+The immediate work is real-site Firefox/Kiwi validation of 2.10 Blob discovery
+and 2.11 MPD inspection, without relaxing the stable 2.9 DIRECT gates. AES-128
+TS, DASH download feasibility, and live RECORD remain separate backlog passes.
+Dark mode, editable preflight filenames, and broader manager-row interactions
+remain separate UI work.
 
 Small streams. Clear answers. No cathedral.

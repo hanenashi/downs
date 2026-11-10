@@ -193,3 +193,15 @@ popup parsed it as a finite MPEG-TS media playlist, displayed the intended
 inspection-only support reason at 420×640, had no horizontal overflow, and
 reported no page or popup console warnings/errors. Network download behavior
 was not changed. Firefox and physical Kiwi validation remain pending.
+
+## 2026-11-10 — DASH discovery and inspection
+
+The static MPD fixture was detected from its `.mpd` request and parsed as one
+12-second Period with two H.264 video representations, one AAC audio
+representation, inherited BaseURLs, and SegmentTemplate timelines. The popup
+showed `Static VOD`, three representations, clear content, and `Inspection
+only`; it rendered no MP4 or source-bundle controls. Chrome-for-Testing 156
+showed the expected representation metadata at 420px and 320px with no popup
+or fixture console warnings/errors. The ordinary browser-tab scrollbar reduces
+the document element's layout viewport, but the fixed popup body itself had no
+horizontal content overflow. Firefox and physical Kiwi remain pending.
