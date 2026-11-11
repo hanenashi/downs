@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Downs DASH AV1 fixture</title>
+  </head>
+  <body>
+    <h1>Downs DASH AV1 fixture</h1>
+    <p id="result">Requesting generated AV1 MPD…</p>
+    <script>
+      fetch("/dash-av1-media/manifest.mpd")
+        .then((response) => {
+          document.getElementById("result").textContent = `HTTP ${response.status}`;
+          return response.text();
+        })
+        .then((text) => {
+          document.body.dataset.mpd = text.includes("av01") ? "loaded" : "invalid";
+        })
+        .catch((error) => {
+          document.getElementById("result").textContent = error.message;
+        });
+    </script>
+  </body>
+</html>

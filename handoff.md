@@ -1,5 +1,20 @@
 # Downs handoff — seek-safe MP4 pass + future companion seam
 
+## 2.16 AV1 parity for separate fMP4 tracks
+
+The existing finite clear separate-track fMP4 worker now accepts either H.264
+or AV1 video initialization metadata with AAC audio. This applies to both HLS
+split renditions and the bounded static DASH path; track combination, fragment
+remapping, flat finalization, timing checks, and source bundles remain unchanged.
+Other video/audio codecs and all existing live, encryption, range, map-change,
+and timeline rejection gates stay in place.
+
+Chrome-for-Testing 156 completed the generated six-second AV1/AAC-LC DASH
+fixture through inspection, queueing, the common split-fMP4 worker, flat
+finalization, and OPFS at 420×640. The 155,366-byte result contained 150 AV1
+frames at 320×180 and 283 mono AAC frames at 48 kHz. Video lasted 6.000 seconds,
+audio 6.021 seconds, and a full FFmpeg decode completed without errors.
+
 ## 2.15 DASH source-bundle parity
 
 Supported static DASH selections now expose the same optional **Source bundle**
@@ -12,7 +27,8 @@ media URLs are not stored in the archive.
 `tools/replay-source-bundle.mjs` accepts the resulting
 `direct-dash-fmp4-vod` manifest and rebuilds it through the existing split-track
 combiner and flat finalizer without contacting the source host. The ordinary
-DASH MP4 action and its strict static, clear H.264/AAC-LC gates are unchanged.
+DASH MP4 action and its strict static, clear codec gates were unchanged in that
+pass; 2.16 later adds AV1 video parity without changing the layout gates.
 
 Chrome-for-Testing 156 completed the generated six-second DASH fixture through
 the new popup action, persistent manager, OPFS TAR, archive validation, and
@@ -214,7 +230,7 @@ At the same time, leave a clean seam for a future optional **native FFmpeg compa
 Keep working behavior intact:
 
 - muxed MPEG-TS VOD path via bundled mux.js;
-- separate H.264 + AAC fMP4/CMAF path;
+- separate H.264-or-AV1 + AAC fMP4/CMAF path;
 - alternate audio selection;
 - persistent Downloads manager;
 - OPFS retention and explicit Save to device;
@@ -514,7 +530,7 @@ numbers, sidx or other random-access metadata, and the fact that the split-fMP4
 path currently interleaves using accumulated playlist EXTINF time.
 
 Prefer actual fragment decode timing over playlist approximation where practical.
-Preserve encoded H.264/AAC samples and do not re-encode. Do not fake sync flags
+Preserve encoded H.264/AV1/AAC samples and do not re-encode. Do not fake sync flags
 for fragments that genuinely depend on earlier reference frames.
 
 If useful, compare one problematic exported MP4 with a native FFmpeg stream-copy

@@ -16,7 +16,7 @@ Compared repositories:
 Downs 2.9 already:
 - Detects network M3U8 requests, inspects master/media playlists, variants and audio renditions.
 - Supports finite, unencrypted MPEG-TS VOD remux through bundled mux.js.
-- Supports a bounded split H.264 + AAC fMP4/CMAF VOD layout.
+- Supports a bounded split H.264-or-AV1 + AAC fMP4/CMAF VOD layout.
 - Supports bounded muxed H.264-or-AV1 + AAC-LC fMP4/CMAF VOD with explicit
   multi-track sample-run addressing.
 - Finalizes actual media samples as **flat, seek-friendly MP4** with timing and sync-sample tables, without re-encoding.
@@ -56,7 +56,7 @@ Acceptance: a known in-memory HLS manifest is detected/inspectable when no URL-b
 
 Implementation status: the detection/inspection milestone landed in Downs
 2.11. The bounded feasibility spike landed in 2.13 for static, clear,
-single-Period H.264 + AAC-LC fMP4 using finite SegmentTemplate timelines or
+single-Period H.264-or-AV1 + AAC-LC fMP4 using finite SegmentTemplate timelines or
 fixed durations. Other DASH addressing, codecs, encryption, and live MPDs stay
 inspection-only.
 
@@ -66,7 +66,10 @@ Upstream:
 
 First milestone: detect MPD by URL and appropriate response Content-Type, validate XML safely, classify video/audio representations, codecs, encryption and timeline structure, and display **inspect-only**. Keep unsupported MPD out of the DIRECT download button.
 
-Subsequent experiment: map a *narrow, finite, unencrypted* DASH fMP4 H.264/AAC VOD representation pair into Downs' existing assembly/finalizer. Reject unsupported segment templates, index layouts, timelines, byte ranges, DRM, codecs or discontinuities explicitly.
+Subsequent experiment: map a *narrow, finite, unencrypted* DASH fMP4
+H.264-or-AV1/AAC VOD representation pair into Downs' existing
+assembly/finalizer. Reject unsupported segment templates, index layouts,
+timelines, byte ranges, DRM, codecs or discontinuities explicitly.
 
 Tests: static MPD, SegmentTemplate/SegmentTimeline, BaseURL resolution, separate audio/video, mismatched timing, encrypted MPD, missing segments, dynamic/live MPD. Do not claim generic DASH support from parsing alone.
 
@@ -124,7 +127,8 @@ Tests: fixture server with shifting live window, late arrival, repeated URLs, se
 
 1. **Detection-only pass:** complete in 2.10/2.11 for scoped Blob playlist discovery and MPD inspection; Firefox/physical Kiwi validation remains.
 2. **AES-128 TS DIRECT pass:** separately gated, with synthetic encrypted fixtures and regression playback tests.
-3. **DASH feasibility spike:** complete in 2.13 for the conservative finite H.264/AAC-LC SegmentTemplate path.
+3. **DASH feasibility spike:** complete in 2.13 for conservative finite
+   SegmentTemplate H.264/AAC-LC, with AV1 video parity added in 2.16.
 4. **Live RECORD architecture proposal:** design state, segment identity, storage and recovery; implement only after review.
 5. Optional direct-write/agent interface based on actual user need.
 

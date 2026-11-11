@@ -839,7 +839,7 @@ function renderDashDownloadAction(response, eligibility, selection) {
   section.append(createElement(
     "p",
     "download-reason",
-    "MP4 combines the selected H.264 and AAC tracks into one seekable file. Source bundle preserves their exact init and media fragments for offline replay."
+    "MP4 combines the selected H.264 or AV1 video and AAC audio into one seekable file. Source bundle preserves their exact init and media fragments for offline replay."
   ));
   return section;
 }

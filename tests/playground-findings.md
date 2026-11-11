@@ -293,3 +293,15 @@ access. Its 256,938-byte MP4 matched the direct-path fixture output, with 150
 H.264 frames, 283 AAC frames, 6.08-second container duration, and clean full
 decode. The only browser console entry was the fixture page's irrelevant
 missing favicon request.
+
+## 2026-11-11 — Separate-track AV1 parity
+
+A generated static six-second DASH fixture used separate AV1 video and AAC-LC
+audio representations with finite SegmentTimelines. Chrome-for-Testing 156
+showed the AV1 codec and **Supported** state at 420×640, queued the ordinary MP4
+action, and completed through the same split-fMP4 worker used by HLS and DASH.
+
+The 155,366-byte flat MP4 contained 150 AV1 frames at 320×180 and 283 mono AAC
+frames at 48 kHz. Video duration was 6.000 seconds, audio was 6.021 seconds, and
+a full FFmpeg decode completed without errors. The only console entry was the
+fixture page's irrelevant missing favicon request.

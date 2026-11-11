@@ -644,14 +644,14 @@ async function runFmp4Tracks(job, signal, videoPlaylist, audioPlaylist) {
   if (
     videoTracks.length !== 1 ||
     videoTracks[0].type !== "video" ||
-    !/^avc[13]\b/i.test(videoTracks[0].codec || "") ||
+    !/^(?:avc[13]\b|av01\b)/i.test(videoTracks[0].codec || "") ||
     audioTracks.length !== 1 ||
     audioTracks[0].type !== "audio" ||
     !/^mp4a\.40\./i.test(audioTracks[0].codec || "")
   ) {
     throw new DownloadError(
       "fmp4-codecs",
-      "This fMP4 milestone requires one H.264 video track and one AAC audio track."
+      "This fMP4 milestone requires one H.264 or AV1 video track and one AAC audio track."
     );
   }
   let combined;

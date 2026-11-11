@@ -81,7 +81,7 @@
     return {
       supported: true,
       code: "direct-fmp4-split-vod",
-      reason: "VOD · fMP4 / CMAF · separate H.264 + AAC · unencrypted"
+      reason: "VOD · fMP4 / CMAF · separate H.264/AV1 + AAC · unencrypted"
     };
   }
 

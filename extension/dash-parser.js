@@ -420,8 +420,8 @@
     if (String(representation.mimeType || "").toLowerCase() !== `${kind}/mp4`) {
       return `The selected ${kind} representation is not ISO BMFF/fMP4.`;
     }
-    if (kind === "video" && !/^avc[13](?:\.|$)/i.test(representation.codecs || "")) {
-      return "DIRECT DASH requires H.264/AVC video.";
+    if (kind === "video" && !/^(?:avc[13](?:\.|$)|av01(?:\.|$))/i.test(representation.codecs || "")) {
+      return "DIRECT DASH requires H.264/AVC or AV1 video.";
     }
     if (kind === "audio" && !/^mp4a\.40\.2(?:$|[,;])/i.test(representation.codecs || "")) {
       return "DIRECT DASH currently requires AAC-LC audio (mp4a.40.2).";
@@ -491,7 +491,7 @@
     return {
       supported: true,
       code: "direct-dash-fmp4-vod",
-      reason: "Static DASH · H.264 + AAC · fMP4",
+      reason: "Static DASH · H.264/AV1 + AAC · fMP4",
       video,
       audio,
       videos,

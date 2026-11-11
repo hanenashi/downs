@@ -9,6 +9,7 @@ const fixtureRoot = path.resolve(__dirname, "..", "tests", "fixtures");
 const modernFixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "modern-fixture");
 const aesFixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "aes-fixture");
 const dashFixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "dash-fixture");
+const dashAv1FixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "dash-av1-fixture");
 const muxedFmp4FixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "muxed-fmp4-fixture");
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -38,6 +39,12 @@ function fixturePath(urlValue) {
     const relative = pathname.replace(/^\/dash-media\/?/, "");
     const resolved = path.resolve(dashFixtureRoot, relative);
     if (resolved !== dashFixtureRoot && !resolved.startsWith(`${dashFixtureRoot}${path.sep}`)) return null;
+    return resolved;
+  }
+  if (pathname === "/dash-av1-media" || pathname.startsWith("/dash-av1-media/")) {
+    const relative = pathname.replace(/^\/dash-av1-media\/?/, "");
+    const resolved = path.resolve(dashAv1FixtureRoot, relative);
+    if (resolved !== dashAv1FixtureRoot && !resolved.startsWith(`${dashAv1FixtureRoot}${path.sep}`)) return null;
     return resolved;
   }
   if (pathname === "/muxed-fmp4-media" || pathname.startsWith("/muxed-fmp4-media/")) {
@@ -141,6 +148,7 @@ function main(argv = process.argv.slice(2)) {
     console.log(`Downs fixture page: http://${displayHost}:${port}/download-page.html`);
     console.log(`Modern fixture page: http://${displayHost}:${port}/modern-page.html`);
     console.log(`Muxed fMP4 fixture page: http://${displayHost}:${port}/muxed-fmp4-page.html`);
+    console.log(`DASH AV1 fixture page: http://${displayHost}:${port}/dash-av1-page.html`);
     console.log("Press Ctrl+C to stop.");
   });
   return 0;

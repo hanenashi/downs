@@ -18,10 +18,11 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.15 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downs 2.16 is experimental. In addition to the bounded MPEG-TS path, persistent
 Downloads manager, request-context replay, and playback grouping, it can now
 assemble conservative modern HLS layouts: finite unencrypted fMP4/CMAF VOD
-with either separate H.264/AAC tracks or one muxed H.264-or-AV1 plus AAC-LC
+with either separate H.264-or-AV1 video and AAC tracks or one muxed
+H.264-or-AV1 plus AAC-LC
 track pair. Finished DIRECT output uses conventional flat MP4 sample tables for
 fast, reliable seeking while preserving the encoded source samples.
 
@@ -30,8 +31,8 @@ It can:
 - detect M3U8 URLs and HLS response content types in the active tab;
 - detect MPD URLs and DASH response content types, then safely inspect static or
   dynamic presentations, representations, codecs, protection, and addressing;
-- assemble a conservative static, clear DASH layout with separate H.264 video
-  and AAC-LC audio fMP4 tracks addressed by finite SegmentTemplate metadata;
+- assemble a conservative static, clear DASH layout with separate H.264-or-AV1
+  video and AAC-LC audio fMP4 tracks addressed by finite SegmentTemplate metadata;
 - detect explicitly typed, page-created M3U8 `Blob`s through a size-limited
   page-world probe and inspect them without widening the download gates;
 - fetch a selected playlist from the extension context with browser credentials;
@@ -52,8 +53,8 @@ It can:
 - open or focus a dedicated Downloads manager for supported media playlists;
 - fetch up to four MPEG-TS segments concurrently while consuming them in order;
 - remux MPEG-TS with bundled mux.js, then finalize its samples into a flat MP4;
-- combine separate H.264 and AAC fMP4 initialization metadata, remap colliding
-  track IDs, and finalize their samples without re-encoding;
+- combine separate H.264-or-AV1 and AAC fMP4 initialization metadata, remap
+  colliding track IDs, and finalize their samples without re-encoding;
 - finalize bounded muxed HLS/CMAF fragments containing H.264 or AV1 video plus
   AAC-LC audio, including multiple explicit sample runs sharing one media box;
 - build truthful timing, keyframe, sample-size, and 64-bit chunk-offset tables;
@@ -108,7 +109,7 @@ DASH inspection accepts bounded XML without DOCTYPE or ENTITY declarations,
 resolves ordinary BaseURL inheritance, and summarizes Period, AdaptationSet,
 Representation, ContentProtection, SegmentTemplate/SegmentTimeline,
 SegmentList, and SegmentBase metadata. Downs 2.13 can download one narrow
-static, unencrypted, single-Period layout: separate H.264 video and AAC-LC audio
+static, unencrypted, single-Period layout: separate H.264-or-AV1 video and AAC-LC audio
 fMP4 tracks using finite SegmentTemplate timelines or fixed durations. Other
 DASH remains clearly inspection-only; this is not generic DASH support.
 
@@ -124,7 +125,8 @@ For a supported fMP4 master with separate audio, Downs initially selects that
 variant's default audio rendition. When several matching renditions exist, a
 compact **Audio** selector appears in the inspected variant before download.
 The manager fetches the chosen playlist, verifies both tracks' simple VOD shape
-and actual H.264/AAC initialization metadata, then assembles their samples into
+and actual H.264-or-AV1 video plus AAC initialization metadata, then assembles
+their samples into
 one seekable MP4.
 
 For a supported muxed fMP4 media playlist, Downs verifies one shared
@@ -222,7 +224,7 @@ they do contain the complete downloaded media and should be shared deliberately.
   encryption. SAMPLE-AES, FairPlay, CENC/DRM, encrypted fMP4, and other key
   formats remain unsupported; Downs does not bypass DRM.
 - fMP4/CMAF support requires one map per track. Separate-track HLS requires
-  H.264 video and AAC audio VOD playlists whose durations differ by no more
+  H.264 or AV1 video and AAC audio VOD playlists whose durations differ by no more
   than two seconds. Muxed HLS requires exactly one H.264 or AV1 video track and
   one AAC-LC audio track with explicit fragment data offsets. Multiple map
   periods and advanced edit/timeline layouts remain unsupported.
@@ -244,7 +246,7 @@ they do contain the complete downloaded media and should be shared deliberately.
 - Firefox has a generated experimental build, but Chrome desktop and Kiwi are
   the first compatibility targets.
 - DASH DIRECT requires one zero-based static Period, finite presentation and
-  track durations, HTTP(S) initialization/media URLs, separate H.264 and
+  track durations, HTTP(S) initialization/media URLs, separate H.264-or-AV1 and
   AAC-LC fMP4 representations, and SegmentTemplate with a finite Timeline or
   fixed duration. Dynamic MPDs, DRM/CENC, HE-AAC, SegmentList, SegmentBase,
   byte-range indexes, open-ended repeats, timeline gaps, and multiple Periods
@@ -327,6 +329,14 @@ The six-second fixture contains separate H.264 and AAC-LC representations with
 formatted Number templates and finite SegmentTimelines. A completed output can
 be validated with `tools/validate-media.js --expected-duration 6`.
 
+Generate the equivalent AV1/AAC-LC DASH fixture:
+
+```bash
+tools/generate-dash-av1-fixture.sh
+node tools/serve-fixtures.js
+# http://127.0.0.1:8765/dash-av1-page.html
+```
+
 After exporting its three-segment MP4 from Downs, validate the complete file
 with native FFprobe/FFmpeg development tools:
 
@@ -400,8 +410,8 @@ extension packages.
 
 ## Direction
 
-The immediate work is real-site Firefox/Kiwi validation of the bounded 2.15
-source-bundle, 2.14 muxed HLS/CMAF, and 2.13 DASH paths, plus Blob and AES-128
+The immediate work is real-site Firefox/Kiwi validation of the bounded 2.16
+AV1 parity, DASH source-bundle, muxed HLS/CMAF, Blob, and AES-128
 compatibility testing. Live RECORD remains the next large architecture pass.
 Dark mode, editable preflight filenames, and broader manager-row interactions
 remain separate UI work.

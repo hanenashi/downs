@@ -141,6 +141,16 @@ test("keeps HE-AAC outside the first DIRECT DASH milestone", () => {
   assert.match(result.reason, /AAC-LC/);
 });
 
+test("accepts AV1 video in the bounded DIRECT DASH layout", () => {
+  const dash = Dash.parseMpd(
+    fixture.replace('codecs="avc1.4d401f"', 'codecs="av01.0.04M.08"'),
+    "https://media.example.test/manifest.mpd"
+  );
+  const result = Dash.validateDirectPair(dash, "360", "audio-en");
+  assert.equal(result.supported, true);
+  assert.match(result.reason, /AV1/);
+});
+
 test("materializes finite fixed-duration Number templates", () => {
   const dash = Dash.parseMpd(`
     <MPD type="static" mediaPresentationDuration="PT5S">
