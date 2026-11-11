@@ -2,9 +2,9 @@
   <img src="downs.png" alt="Downs icon" width="220">
 
   <p>
-    <a href="https://raw.githubusercontent.com/hanenashi/downs/38cbd17/dist/downs-chromium.zip"><strong>Download for Chromium / Kiwi</strong></a>
+    <a href="https://raw.githubusercontent.com/hanenashi/downs/1019a27/dist/downs-chromium.zip"><strong>Download for Chromium / Kiwi</strong></a>
     ·
-    <a href="https://raw.githubusercontent.com/hanenashi/downs/38cbd17/dist/downs-firefox.zip"><strong>Download for Firefox</strong></a>
+    <a href="https://raw.githubusercontent.com/hanenashi/downs/1019a27/dist/downs-firefox.zip"><strong>Download for Firefox</strong></a>
   </p>
 </div>
 
