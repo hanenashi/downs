@@ -240,3 +240,19 @@ an unknown container. The persisted, already-validated `direct-ts-vod` support
 mode now restores MPEG-TS inside both MP4 and source-bundle workers. A focused
 regression test covers the restore and verifies that unverified unknown
 containers remain rejected.
+
+## 2026-11-11 — Bounded DASH fMP4 DIRECT
+
+A generated static six-second MPD exercised separate H.264/AAC-LC fMP4 tracks,
+formatted Number templates, unequal video/audio fragment counts, and finite
+SegmentTimelines. Chrome-for-Testing 156 completed detection, inspection,
+queueing, worker assembly, and OPFS retention at 420×640. The 256,938-byte flat
+MP4 contained 150 H.264 frames at 320×180 and 48 kHz AAC; FFprobe timing checks
+and a full FFmpeg decode passed.
+
+The public DASH-IF `gotland_runt_ad` fixed-duration vector then exercised five
+Number-addressed segments per track. Its 1,311,935-byte output was 10.083 seconds
+with 240 H.264 frames at 640×360, 48 kHz AAC, finite track durations, no decode
+timestamp regressions, and a clean full decode. An older time-addressed HE-AAC
+vector produced a shorter audio timeline and non-monotonic decode diagnostics;
+2.13 therefore gates DASH audio to the proven AAC-LC `mp4a.40.2` profile.

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Downs DASH fMP4 fixture</title>
+  </head>
+  <body>
+    <h1>Downs DASH fMP4 fixture</h1>
+    <p id="result">Requesting generated MPD…</p>
+    <script>
+      fetch("/dash-media/manifest.mpd")
+        .then((response) => {
+          document.getElementById("result").textContent = `HTTP ${response.status}`;
+          return response.text();
+        })
+        .then((text) => {
+          document.body.dataset.mpd = text.includes("<MPD") ? "loaded" : "invalid";
+        })
+        .catch((error) => {
+          document.getElementById("result").textContent = error.message;
+        });
+    </script>
+  </body>
+</html>

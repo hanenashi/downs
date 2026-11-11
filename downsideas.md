@@ -53,7 +53,10 @@ Acceptance: a known in-memory HLS manifest is detected/inspectable when no URL-b
 ### A2. DASH / MPD discovery before download support
 
 Implementation status: the detection/inspection milestone landed in Downs
-2.11. MPDs remain outside DIRECT; the later feasibility spike has not started.
+2.11. The bounded feasibility spike landed in 2.13 for static, clear,
+single-Period H.264 + AAC-LC fMP4 using finite SegmentTemplate timelines or
+fixed durations. Other DASH addressing, codecs, encryption, and live MPDs stay
+inspection-only.
 
 Upstream:
 - `v3/network/core.js` registers `.mpd` among candidate extensions.
@@ -118,7 +121,7 @@ Tests: fixture server with shifting live window, late arrival, repeated URLs, se
 
 1. **Detection-only pass:** complete in 2.10/2.11 for scoped Blob playlist discovery and MPD inspection; Firefox/physical Kiwi validation remains.
 2. **AES-128 TS DIRECT pass:** separately gated, with synthetic encrypted fixtures and regression playback tests.
-3. **DASH feasibility spike:** one conservative finite H.264/AAC MPD fixture into existing fMP4 finalization, or document blockers rather than widening gates irresponsibly.
+3. **DASH feasibility spike:** complete in 2.13 for the conservative finite H.264/AAC-LC SegmentTemplate path.
 4. **Live RECORD architecture proposal:** design state, segment identity, storage and recovery; implement only after review.
 5. Optional direct-write/agent interface based on actual user need.
 

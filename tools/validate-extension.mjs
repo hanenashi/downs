@@ -110,8 +110,8 @@ assert.doesNotMatch(
 );
 assert.match(
   popupHtml,
-  /<script src="link-group-core\.js"><\/script>[\s\S]*<script src="aes-core\.js"><\/script>[\s\S]*<script src="download-core\.js"><\/script>[\s\S]*<script src="audio-core\.js"><\/script>[\s\S]*<script src="popup\.js"><\/script>/,
-  "popup must load grouping, AES, download, and audio helpers before its controller"
+  /<script src="link-group-core\.js"><\/script>[\s\S]*<script src="dash-parser\.js"><\/script>[\s\S]*<script src="aes-core\.js"><\/script>[\s\S]*<script src="download-core\.js"><\/script>[\s\S]*<script src="audio-core\.js"><\/script>[\s\S]*<script src="popup\.js"><\/script>/,
+  "popup must load grouping, DASH, AES, download, and audio helpers before its controller"
 );
 
 console.log("Extension manifests and shipped files look valid.");

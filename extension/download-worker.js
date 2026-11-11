@@ -2,6 +2,7 @@
 
 importScripts(
   "hls-parser.js",
+  "dash-parser.js",
   "aes-core.js",
   "download-core.js",
   "fmp4-core.js",
@@ -90,7 +91,7 @@ async function fetchBytes(url, signal, kind, detail = {}) {
     );
   }
 
-  const limit = kind === "Playlist"
+  const limit = kind === "Playlist" || kind === "DASH manifest"
     ? PLAYLIST_LIMIT_BYTES
     : kind === "Encryption key"
       ? KEY_LIMIT_BYTES
@@ -126,6 +127,20 @@ async function fetchPlaylist(url, signal) {
   const playlist = globalThis.DownsHls.parsePlaylist(text, response.finalUrl);
   playlist.sourceText = text;
   return playlist;
+}
+
+async function fetchDash(url, signal) {
+  const response = await fetchBytes(url, signal, "DASH manifest");
+  let dash;
+  try {
+    dash = globalThis.DownsDash.parseMpd(new TextDecoder().decode(response.bytes), response.finalUrl);
+  } catch (error) {
+    throw new DownloadError("invalid-mpd", `The DASH manifest is invalid: ${error?.message || "parse error"}`);
+  }
+  if (dash.kind !== "dash") {
+    throw new DownloadError("not-dash", dash.reason || "The response is not a DASH MPD.");
+  }
+  return dash;
 }
 
 async function createOutputSink(jobId, extension = "mp4", mimeType = "video/mp4") {
@@ -461,6 +476,32 @@ async function runSplitFmp4Job(job, signal) {
     throw new DownloadError(eligibility.code, eligibility.reason);
   }
 
+  return runFmp4Tracks(job, signal, videoPlaylist, audioPlaylist);
+}
+
+async function runDashFmp4Job(job, signal) {
+  if (!job?.id || !job.playlistUrl || !job.dashVideoId || !job.dashAudioId) {
+    throw new DownloadError("job", "The DASH job is missing its manifest or representation selection.");
+  }
+  post("progress", { phase: "playlist", message: "Checking DASH representations…", completed: 0, total: 0, bytes: 0 });
+  const dash = await fetchDash(job.playlistUrl, signal);
+  const eligibility = globalThis.DownsDash.validateDirectPair(dash, job.dashVideoId, job.dashAudioId);
+  if (!eligibility.supported) {
+    throw new DownloadError(eligibility.code, eligibility.reason);
+  }
+  const videoTrack = {
+    mapUrl: eligibility.video.initializationUrl,
+    segments: eligibility.video.segments
+  };
+  const audioTrack = {
+    mapUrl: eligibility.audio.initializationUrl,
+    segments: eligibility.audio.segments
+  };
+  return runFmp4Tracks(job, signal, videoTrack, audioTrack);
+}
+
+async function runFmp4Tracks(job, signal, videoPlaylist, audioPlaylist) {
+
   const schedule = globalThis.DownsFmp4.interleaveSegments(
     videoPlaylist.segments,
     audioPlaylist.segments
@@ -747,6 +788,9 @@ async function runJob(job) {
   activeRequestContext = job?.requestContext || {};
   if (job?.outputMode === "source-bundle") {
     return runSourceBundle(job, activeController.signal);
+  }
+  if (job?.supportMode === "direct-dash-fmp4-vod") {
+    return runDashFmp4Job(job, activeController.signal);
   }
   if (job?.supportMode === "direct-fmp4-split-vod") {
     return runSplitFmp4Job(job, activeController.signal);

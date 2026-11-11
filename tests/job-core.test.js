@@ -41,6 +41,22 @@ test("marks source diagnostic jobs explicitly", () => {
   assert.equal(job.outputMode, "source-bundle");
 });
 
+test("persists a DASH representation selection without media bytes", () => {
+  const job = createJob({
+    id: "dash",
+    playlistUrl: "https://example.com/manifest.mpd",
+    mediaType: "dash",
+    dashVideoId: "video-720",
+    dashAudioId: "audio-en",
+    supportMode: "direct-dash-fmp4-vod",
+    filename: "dash.mp4"
+  }, 100);
+  assert.equal(job.mediaType, "dash");
+  assert.equal(job.dashVideoId, "video-720");
+  assert.equal(job.dashAudioId, "audio-en");
+  assert.equal("segments" in job, false);
+});
+
 test("finished jobs retain private output metadata independently of export", () => {
   const done = transitionJob(newJob("output"), "done", {
     outputStorage: "opfs",

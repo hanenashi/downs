@@ -749,9 +749,102 @@ function renderDashRepresentations(title, representations) {
   return section;
 }
 
-function renderDashInspection(response) {
-  activeInspection = { response, variantLabel: "", context: { mediaType: "dash" } };
+function dashVideoLabel(representation) {
+  return representation.height
+    ? `${representation.height}p${representation.bandwidth ? ` · ${formatBandwidth(representation.bandwidth)}` : ""}`
+    : representation.id || "Video";
+}
+
+function dashAudioLabel(representation) {
+  return [
+    representation.language,
+    representation.audioSamplingRate ? `${representation.audioSamplingRate.toLocaleString()} Hz` : "",
+    representation.bandwidth ? formatBandwidth(representation.bandwidth) : ""
+  ].filter(Boolean).join(" · ") || representation.id || "AAC audio";
+}
+
+function renderDashDownloadAction(response, eligibility, selection) {
+  const section = createElement("section", "download-action");
+  if (!eligibility.supported) {
+    section.append(createElement("strong", "download-label", "Direct download unavailable"));
+    section.append(createElement("p", "download-reason", eligibility.reason));
+    return section;
+  }
+
+  const addChoice = (label, values, selectedId, ariaLabel, onChange) => {
+    if (values.length < 2) return;
+    const field = createElement("label", "audio-choice");
+    field.append(createElement("span", "audio-choice-label", label));
+    const select = createElement("select", "audio-select");
+    select.setAttribute("aria-label", ariaLabel);
+    for (const representation of values) {
+      const option = createElement(
+        "option",
+        "",
+        label === "Video" ? dashVideoLabel(representation) : dashAudioLabel(representation)
+      );
+      option.value = representation.id;
+      option.selected = String(representation.id) === String(selectedId);
+      select.append(option);
+    }
+    select.addEventListener("change", () => onChange(select.value));
+    field.append(select);
+    section.append(field);
+  };
+
+  addChoice("Video", eligibility.videos, eligibility.video.id, "DASH video representation", (id) => {
+    renderDashInspection(response, { ...selection, videoId: id });
+  });
+  addChoice("Audio", eligibility.audios, eligibility.audio.id, "DASH audio representation", (id) => {
+    renderDashInspection(response, { ...selection, audioId: id });
+  });
+
+  const ready = createElement("div", "ready-state");
+  ready.append(createElement("strong", "", "Ready to download"));
+  ready.append(createElement("span", "", `${eligibility.reason} · ${dashAudioLabel(eligibility.audio)}`));
+  section.append(ready);
+
+  const label = eligibility.video.height ? `${eligibility.video.height}p` : "DASH";
+  const button = createElement("button", "download-button", `Download ${label}`);
+  button.type = "button";
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    button.textContent = "Adding to Downloads…";
+    try {
+      const rootLink = selectedLink();
+      const result = await ext.runtime.sendMessage({
+        type: "start-dash-download",
+        url: response.fetch.finalUrl,
+        videoRepresentationId: eligibility.video.id,
+        audioRepresentationId: eligibility.audio.id,
+        videoLabel: label,
+        requestContext: rootLink?.requestContext || {}
+      });
+      if (!result?.ok) throw new Error(result?.error?.message || "The DASH download could not be added.");
+      button.textContent = "Added to Downloads ✓";
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = `Download ${label}`;
+      section.querySelector(".download-error")?.remove();
+      section.append(createElement("p", "download-error", error?.message || "The DASH download could not be added."));
+    }
+  });
+  section.append(button);
+  section.append(createElement(
+    "p",
+    "download-reason",
+    "Downs combines the selected H.264 and AAC fMP4 tracks into one seekable MP4. DASH source bundles are not enabled in this pass."
+  ));
+  return section;
+}
+
+function renderDashInspection(response, selection = {}) {
   const dash = response.dash;
+  const eligibility = globalThis.DownsDash.validateDirectPair(dash, selection.videoId, selection.audioId);
+  const normalizedSelection = eligibility.supported
+    ? { videoId: eligibility.video.id, audioId: eligibility.audio.id }
+    : selection;
+  activeInspection = { response, variantLabel: "", context: { mediaType: "dash", ...normalizedSelection } };
   inspectorEl.hidden = false;
   inspectorEl.textContent = "";
 
@@ -763,7 +856,11 @@ function renderDashInspection(response) {
   chips.append(createElement("span", "status-chip", dash.dynamic ? "Dynamic / live" : "Static VOD"));
   chips.append(createElement("span", "status-chip", countLabel(dash.representations.length, "representation")));
   chips.append(createElement("span", `status-chip ${dash.encrypted ? "warn" : "good"}`, dash.encrypted ? "Protected" : "Clear"));
-  chips.append(createElement("span", "status-chip warn", "Inspection only"));
+  chips.append(createElement(
+    "span",
+    `status-chip ${eligibility.supported ? "good" : "warn"}`,
+    eligibility.supported ? "Supported" : "Inspection only"
+  ));
   inspectorEl.append(chips);
 
   const disclosure = createElement("details", "technical-details");
@@ -791,17 +888,18 @@ function renderDashInspection(response) {
   for (const warning of dash.warnings || []) {
     inspectorEl.append(createElement("p", "notice", warning));
   }
-  inspectorEl.append(createElement(
-    "p",
-    "notice",
-    dash.encrypted
-      ? "Protected DASH is inspection-only. Downs will not attempt to bypass DRM or CENC."
-      : "DASH download support is not implemented. This manifest was inspected only."
-  ));
+  if (dash.encrypted) {
+    inspectorEl.append(createElement(
+      "p",
+      "notice error",
+      "Protected DASH is inspection-only. Downs will not attempt to bypass DRM or CENC."
+    ));
+  }
+  inspectorEl.append(renderDashDownloadAction(response, eligibility, normalizedSelection));
   inspectorEl.append(createElement(
     "p",
     "inspector-note",
-    "MPD parsing stays inside the extension. No DASH media was downloaded."
+    "MPD parsing and supported media processing stay inside the extension."
   ));
 }
 

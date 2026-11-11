@@ -123,7 +123,7 @@ function renderDetails(job, row) {
   }
   const details = createElement("div", "job-details");
   const entries = [
-    ["Playlist URL", job.playlistUrl || "Unavailable"],
+    [job.mediaType === "dash" ? "Manifest URL" : "Playlist URL", job.playlistUrl || "Unavailable"],
     ["Attempt", String(job.attempt || 1)]
   ];
   if (job.audioPlaylistUrl) {

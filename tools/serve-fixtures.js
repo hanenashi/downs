@@ -8,6 +8,7 @@ const path = require("node:path");
 const fixtureRoot = path.resolve(__dirname, "..", "tests", "fixtures");
 const modernFixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "modern-fixture");
 const aesFixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "aes-fixture");
+const dashFixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "dash-fixture");
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".m3u8", "application/vnd.apple.mpegurl; charset=utf-8"],
@@ -30,6 +31,12 @@ function fixturePath(urlValue) {
     const relative = pathname.replace(/^\/aes\/?/, "");
     const resolved = path.resolve(aesFixtureRoot, relative);
     if (resolved !== aesFixtureRoot && !resolved.startsWith(`${aesFixtureRoot}${path.sep}`)) return null;
+    return resolved;
+  }
+  if (pathname === "/dash-media" || pathname.startsWith("/dash-media/")) {
+    const relative = pathname.replace(/^\/dash-media\/?/, "");
+    const resolved = path.resolve(dashFixtureRoot, relative);
+    if (resolved !== dashFixtureRoot && !resolved.startsWith(`${dashFixtureRoot}${path.sep}`)) return null;
     return resolved;
   }
   const relative = pathname === "/" ? "download-page.html" : pathname.replace(/^\/+/, "");

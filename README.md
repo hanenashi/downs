@@ -11,14 +11,14 @@
 # Downs
 
 A small browser extension for detecting and inspecting HLS/DASH manifests, and
-directly saving a carefully bounded subset of HLS streams from the browser
+directly saving a carefully bounded subset of HLS and DASH streams from the browser
 session that is already playing them.
 
 No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.12.2 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downs 2.13 is experimental. In addition to the bounded MPEG-TS path, persistent
 Downloads manager, request-context replay, and playback grouping, it can now
 assemble a conservative modern HLS layout: finite unencrypted fMP4/CMAF VOD
 with one separate H.264 video track and a user-selected AAC audio rendition.
@@ -30,6 +30,8 @@ It can:
 - detect M3U8 URLs and HLS response content types in the active tab;
 - detect MPD URLs and DASH response content types, then safely inspect static or
   dynamic presentations, representations, codecs, protection, and addressing;
+- assemble a conservative static, clear DASH layout with separate H.264 video
+  and AAC-LC audio fMP4 tracks addressed by finite SegmentTemplate metadata;
 - detect explicitly typed, page-created M3U8 `Blob`s through a size-limited
   page-world probe and inspect them without widening the download gates;
 - fetch a selected playlist from the extension context with browser credentials;
@@ -98,11 +100,13 @@ labels the result as an **in-memory Blob playlist**. This first pass is
 inspection-only: network child playlists can be inspected normally, but an
 inline media playlist itself cannot enter DIRECT download processing.
 
-DASH MPDs are also inspection-only in 2.11. Downs accepts bounded XML without
-DOCTYPE or ENTITY declarations, resolves ordinary BaseURL inheritance, and
-summarizes Period, AdaptationSet, Representation, ContentProtection,
-SegmentTemplate/SegmentTimeline, SegmentList, and SegmentBase metadata. MPD
-detection never enables an HLS download button or claims general DASH support.
+DASH inspection accepts bounded XML without DOCTYPE or ENTITY declarations,
+resolves ordinary BaseURL inheritance, and summarizes Period, AdaptationSet,
+Representation, ContentProtection, SegmentTemplate/SegmentTimeline,
+SegmentList, and SegmentBase metadata. Downs 2.13 can download one narrow
+static, unencrypted, single-Period layout: separate H.264 video and AAC-LC audio
+fMP4 tracks using finite SegmentTemplate timelines or fixed durations. Other
+DASH remains clearly inspection-only; this is not generic DASH support.
 
 The secondary **Source bundle** action creates an advanced `.downs-source.tar`
 diagnostic job instead of a finished MP4. It stores each fetched segment or
@@ -229,8 +233,12 @@ they do contain the complete downloaded media and should be shared deliberately.
   OPFS-backed outputs survive closing the tab.
 - Firefox has a generated experimental build, but Chrome desktop and Kiwi are
   the first compatibility targets.
-- DASH is discovery/inspection only. MPD representations are never queued into
-  the DIRECT HLS worker in 2.12.
+- DASH DIRECT requires one zero-based static Period, finite presentation and
+  track durations, HTTP(S) initialization/media URLs, separate H.264 and
+  AAC-LC fMP4 representations, and SegmentTemplate with a finite Timeline or
+  fixed duration. Dynamic MPDs, DRM/CENC, HE-AAC, SegmentList, SegmentBase,
+  byte-range indexes, open-ended repeats, timeline gaps, and multiple Periods
+  remain inspection-only.
 
 ## Development
 
@@ -293,8 +301,20 @@ must not be recorded.
 
 `http://127.0.0.1:8765/dash-page.html` requests a deterministic static MPD with
 two H.264 video representations, one AAC audio representation, inherited
-BaseURLs, and SegmentTimelines. The popup must label it **Inspection only** and
-must not render MP4 or source-bundle download actions.
+BaseURLs, and SegmentTimelines. It exercises parser and representation-selection
+metadata; its illustrative media URLs do not exist.
+
+Generate the complete static DASH/fMP4 fixture and open its page:
+
+```bash
+tools/generate-dash-fixture.sh
+node tools/serve-fixtures.js
+# http://127.0.0.1:8765/dash-download-page.html
+```
+
+The six-second fixture contains separate H.264 and AAC-LC representations with
+formatted Number templates and finite SegmentTimelines. A completed output can
+be validated with `tools/validate-media.js --expected-duration 6`.
 
 After exporting its three-segment MP4 from Downs, validate the complete file
 with native FFprobe/FFmpeg development tools:
@@ -361,9 +381,9 @@ extension packages.
 
 ## Direction
 
-The immediate work is real-site Firefox/Kiwi validation of 2.10 Blob discovery,
-2.11 MPD inspection, and the bounded 2.12 AES-128 TS path. DASH download
-feasibility and live RECORD remain separate backlog passes.
+The immediate work is real-site Firefox/Kiwi validation of the bounded 2.13
+DASH path plus continued 2.10 Blob and 2.12 AES-128 compatibility testing. Live
+RECORD remains the next large architecture pass.
 Dark mode, editable preflight filenames, and broader manager-row interactions
 remain separate UI work.
 

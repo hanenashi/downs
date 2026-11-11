@@ -703,6 +703,52 @@ async function startDownloadJob(message) {
   return { ok: true, id };
 }
 
+async function startDashDownloadJob(message) {
+  const requestContext = globalThis.DownsRequestContext.sanitize(message.requestContext);
+  const inspection = await inspectDash(message.url, requestContext);
+  if (!inspection.ok) return inspection;
+
+  const eligibility = globalThis.DownsDash.validateDirectPair(
+    inspection.dash,
+    message.videoRepresentationId,
+    message.audioRepresentationId
+  );
+  if (!eligibility.supported) {
+    return { ok: false, error: { code: eligibility.code, message: eligibility.reason } };
+  }
+
+  const [sourceTab] = await ext.tabs.query({ active: true, currentWindow: true });
+  const storedSettings = await jobStorageArea.get(globalThis.DownsDownload.SETTINGS_KEY);
+  const filenameMode = storedSettings[globalThis.DownsDownload.SETTINGS_KEY]?.filenameMode || "suggested";
+  const id = createJobId();
+  const variantLabel = message.videoLabel || (eligibility.video.height ? `${eligibility.video.height}p` : "DASH");
+  const suggestedFilename = globalThis.DownsDownload.filenameForMode(
+    sourceTab?.title || "downs-video",
+    variantLabel,
+    filenameMode
+  );
+  const job = globalThis.DownsJobs.createJob({
+    id,
+    playlistUrl: inspection.fetch.finalUrl,
+    mediaType: "dash",
+    dashVideoId: eligibility.video.id,
+    dashAudioId: eligibility.audio.id,
+    sourcePageTitle: sourceTab?.title || "",
+    filename: globalThis.DownsDownload.outputFilename(suggestedFilename, "mp4"),
+    variantLabel,
+    hasSeparateAudio: true,
+    audioLabel: eligibility.audio.language || eligibility.audio.codecs || "AAC",
+    supportMode: eligibility.code,
+    outputMode: "mp4",
+    supportSummary: eligibility.reason,
+    requestContext
+  });
+
+  await jobStorageArea.set({ [globalThis.DownsJobs.jobKey(id)]: job });
+  await openDownloadsManager();
+  return { ok: true, id };
+}
+
 async function getDownloadJobs() {
   const stored = await jobStorageArea.get(null);
   return Object.entries(stored)
@@ -783,6 +829,11 @@ ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message?.type === "start-download") {
       sendResponse(await startDownloadJob(message));
+      return;
+    }
+
+    if (message?.type === "start-dash-download") {
+      sendResponse(await startDashDownloadJob(message));
       return;
     }
 

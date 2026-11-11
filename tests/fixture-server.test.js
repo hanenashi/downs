@@ -8,6 +8,7 @@ test("fixture server resolves its default page and query-bearing fixture URLs", 
   assert.equal(path.basename(fixturePath("/")), "download-page.html");
   assert.equal(path.basename(fixturePath("/mux-short.m3u8?fixture=direct")), "mux-short.m3u8");
   assert.match(fixturePath("/modern/video.m3u8"), /test-artifacts\/modern-fixture\/video\.m3u8$/);
+  assert.match(fixturePath("/dash-media/manifest.mpd"), /test-artifacts\/dash-fixture\/manifest\.mpd$/);
 });
 
 test("fixture server contains normalized and encoded traversal paths", () => {
@@ -15,6 +16,7 @@ test("fixture server contains normalized and encoded traversal paths", () => {
   assert.equal(fixturePath("/%2e%2e/%2e%2e/README.md"), path.resolve(__dirname, "fixtures", "README.md"));
   assert.equal(fixturePath("/%2e%2e%2fREADME.md"), null);
   assert.equal(fixturePath("/modern/%2e%2e%2fREADME.md"), null);
+  assert.equal(fixturePath("/dash-media/%2e%2e%2fREADME.md"), null);
 });
 
 test("fixture server validates its optional port", () => {

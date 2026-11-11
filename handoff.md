@@ -1,5 +1,31 @@
 # Downs handoff — seek-safe MP4 pass + future companion seam
 
+## 2.13 bounded DASH fMP4 DIRECT update
+
+Downs now materializes inherited DASH SegmentTemplate metadata into bounded
+initialization and media URLs. The first DIRECT gate accepts one zero-based
+static Period with finite duration, clear separate H.264 video and AAC-LC audio
+fMP4 representations, HTTP(S) media, and either a finite SegmentTimeline or a
+fixed segment duration. It resolves `$RepresentationID$`, `$Bandwidth$`,
+formatted `$Number$`, `$Time$`, BaseURL inheritance, startNumber, timescale,
+and presentationTimeOffset. It rejects dynamic/live MPDs, DRM/CENC, HE-AAC,
+open-ended repeats, gaps/regressions, SegmentList/Base, multiple Periods, and
+non-HTTP media.
+
+The popup exposes video/audio representation selectors only when the pair
+passes those gates. Jobs persist the MPD URL and representation IDs, refetch and
+revalidate on Retry, verify actual initialization tracks, then reuse the
+existing split-fMP4 combiner and flat-MP4 finalizer. DASH source bundles remain
+disabled in this first pass.
+
+Chrome-for-Testing 156 completed the generated six-second SegmentTimeline
+fixture through detection, popup, queue, worker, and OPFS. The 256,938-byte
+output contained 150 H.264 frames at 320×180 plus AAC and fully decoded without
+errors. A public DASH-IF ten-second fixed-duration AAC-LC vector also completed:
+1,311,935 bytes, 240 H.264 frames at 640×360, synchronized AAC, and clean full
+decode. A separate DASH-IF HE-AAC vector exposed non-monotonic audio behavior
+and is now deliberately rejected rather than overclaimed.
+
 ## 2.12.2 probed-container worker handoff
 
 The 2.12.1 inspector correctly identified suffix-disguised MPEG-TS and queued a
@@ -59,12 +85,11 @@ versus dynamic presentation, duration, periods, inherited BaseURLs, video/audio
 representations, codecs, ContentProtection, and SegmentTemplate/Timeline,
 SegmentList, or SegmentBase addressing.
 
-The popup labels all DASH results **Inspection only** and never renders MP4 or
-source-bundle actions for them. The HLS inspector and DIRECT worker were not
-widened. A deterministic static MPD passed Chrome-for-Testing 156 at 420px and
-320px: two video plus one audio representation rendered, no download controls
-appeared, and page/popup consoles were clean. Firefox and physical Kiwi remain
-manual compatibility targets.
+At the 2.11 milestone the popup labeled all DASH results **Inspection only** and
+never rendered download actions. A deterministic static MPD passed
+Chrome-for-Testing 156 at 420px and 320px with clean consoles. The later 2.13
+pass widened only the explicitly documented static fMP4 subset above; all
+other MPDs retain the 2.11 inspection behavior.
 
 ## 2.10 Blob playlist discovery update
 
