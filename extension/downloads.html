@@ -59,11 +59,30 @@
         <fieldset class="interface-settings">
           <legend>Interface</legend>
           <label class="setting-choice">
+            <input type="radio" name="interface-mode" value="simple">
+            <span>Simple <small>Keep the stream list and essential download controls.</small></span>
+          </label>
+          <label class="setting-choice">
+            <input type="radio" name="interface-mode" value="detailed">
+            <span>Detailed <small>Show inspection data, diagnostics, and source tools.</small></span>
+          </label>
+          <label class="setting-choice">
             <input id="show-full-urls" type="checkbox">
             <span>
               Show full URLs in stream list
               <small>Technical URLs always remain available in playlist details.</small>
             </span>
+          </label>
+        </fieldset>
+        <fieldset class="manager-settings">
+          <legend>Download manager</legend>
+          <label class="setting-choice">
+            <input type="radio" name="manager-surface" value="compact">
+            <span>Compact window <small>Reuse a small persistent browser window.</small></span>
+          </label>
+          <label class="setting-choice">
+            <input type="radio" name="manager-surface" value="tab">
+            <span>Browser tab <small>Open Downloads in the full browser window.</small></span>
           </label>
         </fieldset>
         <p class="settings-note">Filename choice applies to new downloads. Interface preferences apply immediately.</p>

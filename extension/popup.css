@@ -674,6 +674,23 @@ footer {
   font-size: 10.5px;
 }
 
+.simple-mode .app-header p,
+.simple-mode .technical-details,
+.simple-mode .status-chips,
+.simple-mode .audio-renditions-section,
+.simple-mode .dash-representations,
+.simple-mode .source-button,
+.simple-mode .download-reason,
+.simple-mode .inspector-note,
+.simple-mode footer {
+  display: none;
+}
+
+.simple-mode .inspector {
+  padding-top: 12px;
+  padding-bottom: 14px;
+}
+
 @media (max-width: 390px) {
   .app-header,
   .downloads-entry,

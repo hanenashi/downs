@@ -759,14 +759,50 @@ async function getDownloadJobs() {
 
 async function openDownloadsManager() {
   const managerUrl = ext.runtime.getURL("downloads.html");
+  const stored = await jobStorageArea.get(globalThis.DownsDownload.SETTINGS_KEY);
+  const surface = stored[globalThis.DownsDownload.SETTINGS_KEY]?.managerSurface === "compact"
+    ? "compact"
+    : "tab";
   const tabs = await ext.tabs.query({});
   const existing = tabs.find((tab) => tab.url?.startsWith(managerUrl));
   if (existing?.id !== undefined) {
-    await ext.tabs.update(existing.id, { active: true });
+    const currentWindow = await ext.windows.get(existing.windowId);
+    if (surface === "compact" && currentWindow.type !== "popup") {
+      await ext.windows.create({
+        tabId: existing.id,
+        type: "popup",
+        focused: true,
+        width: 460,
+        height: 720
+      });
+    } else if (surface === "tab" && currentWindow.type === "popup") {
+      const windows = await ext.windows.getAll({ windowTypes: ["normal"] });
+      const target = windows.find((window) => window.focused) || windows[windows.length - 1];
+      if (target?.id !== undefined) {
+        await ext.tabs.move(existing.id, { windowId: target.id, index: -1 });
+        await ext.tabs.update(existing.id, { active: true });
+        await ext.windows.update(target.id, { focused: true });
+      } else {
+        await ext.windows.create({ tabId: existing.id, type: "normal", focused: true });
+      }
+    } else {
+      await ext.tabs.update(existing.id, { active: true });
+      await ext.windows.update(existing.windowId, { focused: true });
+    }
     return existing.id;
   }
-  const created = await ext.tabs.create({ url: managerUrl });
-  return created?.id;
+  if (surface === "compact") {
+    const created = await ext.windows.create({
+      url: managerUrl,
+      type: "popup",
+      focused: true,
+      width: 460,
+      height: 720
+    });
+    return created?.tabs?.[0]?.id;
+  }
+  const createdTab = await ext.tabs.create({ url: managerUrl });
+  return createdTab?.id;
 }
 
 registerRequestHeaderListener();

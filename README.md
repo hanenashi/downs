@@ -18,7 +18,7 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.16 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downs 2.17 is experimental. In addition to the bounded MPEG-TS path, persistent
 Downloads manager, request-context replay, and playback grouping, it can now
 assemble conservative modern HLS layouts: finite unencrypted fMP4/CMAF VOD
 with either separate H.264-or-AV1 video and AAC tracks or one muxed
@@ -50,7 +50,8 @@ It can:
   add parsed stream facts only after a playlist has actually been inspected;
 - keep complete playlist URLs in a collapsible **Technical details** section
   with **Copy URL**, plus an optional URL-first stream-list setting;
-- open or focus a dedicated Downloads manager for supported media playlists;
+- open or focus one persistent Downloads manager in either a compact window or
+  a normal browser tab;
 - fetch up to four MPEG-TS segments concurrently while consuming them in order;
 - remux MPEG-TS with bundled mux.js, then finalize its samples into a flat MP4;
 - combine separate H.264-or-AV1 and AAC fMP4 initialization metadata, remap
@@ -140,7 +141,8 @@ same-page startup bursts into one playback row. Expand **Show related playlists*
 to inspect any individual observed URL. Different CDN hosts and clearly
 different URL families remain separate.
 
-Choosing **Download** creates a queued job and opens the Downs Downloads tab.
+Choosing **Download** creates a queued job and opens Downs Downloads in the
+configured compact window or browser tab.
 A brief confirmation and highlighted job row make that handoff visible. The
 manager owns processing, progress, cancellation, retry, and export. Downs
 rechecks the current playlist before fetching its segments. When a job reaches
@@ -149,14 +151,21 @@ private copy stays available for **Save again** until it is deleted or aged out
 of the bounded 30-job history.
 
 The popup's **Downloads** entry shows active and ready-to-save counts and opens
-the existing manager tab when one is already present.
+the existing manager surface when one is already present. Downs reuses and can
+move that page between a compact window and a normal tab without reloading it,
+so changing the destination does not discard an active worker.
 
 The manager's **Settings** pane controls names for new downloads. **Suggested
 title** preserves the existing behavior, **Date stamp** produces names such as
 `2026-09-14_20-42.mp4`, and **Random hash** produces names such as
 `k7m2p9x4qa.mp4`. Existing job names are not changed. **Show full URLs in stream
 list** restores URL-first popup rows for technical testing; full URLs remain
-available in playlist details regardless of that setting.
+available in playlist details regardless of that setting. **Simple** mode keeps
+the stream list and essential download actions, automatically choosing the highest
+supported advertised video rendition and queuing its MP4. **Detailed** mode restores technical
+inspection and source-bundle controls. **Download manager** chooses a reused
+**Compact window** or ordinary **Browser tab** and moves the current manager
+immediately; existing installations retain the tab behavior until this setting is changed.
 
 ## Kiwi Android compatibility target
 
@@ -238,9 +247,9 @@ they do contain the complete downloaded media and should be shared deliberately.
   cannot safely reproduce. Downs deliberately replays only the page origin as
   Referer; it never replays cookie or authorization header values.
 - Browsers without Origin Private File System support use an in-memory fallback
-  capped at 256 MiB. Keep the Downloads tab open while such an output is waiting
+  capped at 256 MiB. Keep the Downloads page open while such an output is waiting
   to be saved. Available storage quota can still limit larger files.
-- Closing the Downloads tab interrupts active work. On reopening, Downs marks
+- Closing the Downloads page interrupts active work. On reopening, Downs marks
   that job failed, cleans its partial output, and offers **Retry**. Completed
   OPFS-backed outputs survive closing the tab.
 - Firefox has a generated experimental build, but Chrome desktop and Kiwi are
@@ -410,7 +419,7 @@ extension packages.
 
 ## Direction
 
-The immediate work is real-site Firefox/Kiwi validation of the bounded 2.16
+The immediate work is real-site Firefox/Kiwi validation of the bounded 2.17
 AV1 parity, DASH source-bundle, muxed HLS/CMAF, Blob, and AES-128
 compatibility testing. Live RECORD remains the next large architecture pass.
 Dark mode, editable preflight filenames, and broader manager-row interactions

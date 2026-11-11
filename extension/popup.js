@@ -12,6 +12,8 @@ let activeInspection = null;
 let parentInspection = null;
 let activePageTitle = "";
 let showFullUrls = false;
+let interfaceMode = "detailed";
+const autoQueuedDownloads = new Set();
 const expandedGroups = new Set();
 const inspectionSummaries = new Map();
 
@@ -102,6 +104,17 @@ function resolutionLabel(variant) {
   return height ? `${height}p` : "Variant";
 }
 
+function bestVideoChoice(values) {
+  return [...values].sort((a, b) => {
+    const [aResolutionWidth, aResolutionHeight] = String(a.resolution || "").split("x").map(Number);
+    const [bResolutionWidth, bResolutionHeight] = String(b.resolution || "").split("x").map(Number);
+    const aPixels = (Number(a.width) || aResolutionWidth || 0) * (Number(a.height) || aResolutionHeight || 0);
+    const bPixels = (Number(b.width) || bResolutionWidth || 0) * (Number(b.height) || bResolutionHeight || 0);
+    return bPixels - aPixels ||
+      (Number(b.averageBandwidth || b.bandwidth) || 0) - (Number(a.averageBandwidth || a.bandwidth) || 0);
+  })[0];
+}
+
 function formatBandwidth(value) {
   if (!value) {
     return "unknown rate";
@@ -144,6 +157,19 @@ function encryptionLabel(playlist) {
 
 function setStatus(message) {
   statusEl.textContent = message;
+}
+
+function applyInterfaceMode(mode) {
+  interfaceMode = mode === "simple" ? "simple" : "detailed";
+  document.body.classList.toggle("simple-mode", interfaceMode === "simple");
+}
+
+function autoQueuePrimaryDownload(action, key) {
+  if (interfaceMode !== "simple" || !action || autoQueuedDownloads.has(key)) return;
+  const button = action.querySelector(".download-button:not(:disabled)");
+  if (!button) return;
+  autoQueuedDownloads.add(key);
+  queueMicrotask(() => button.click());
 }
 
 function selectedLink() {
@@ -345,7 +371,7 @@ function renderVariants(playlist) {
     return null;
   }
 
-  const section = createElement("section", "subsection");
+  const section = createElement("section", "subsection variants-section");
   section.append(createElement("h3", "", `Variants (${playlist.variants.length})`));
   const list = createElement("div", "variant-list");
 
@@ -391,7 +417,7 @@ function renderRenditions(playlist) {
     return null;
   }
 
-  const section = createElement("section", "subsection");
+  const section = createElement("section", "subsection audio-renditions-section");
   section.append(createElement("h3", "", `Audio (${playlist.audioRenditions.length})`));
   const list = createElement("ul", "rendition-list");
 
@@ -623,6 +649,23 @@ function renderDownloadAction(playlist, response, variantLabel, context, eligibi
 function renderInspection(response, variantLabel = "", context = {}) {
   activeInspection = { response, variantLabel, context };
   const playlist = response.playlist;
+  if (interfaceMode === "simple" && playlist.kind === "master" && playlist.variants.length) {
+    const variant = bestVideoChoice(playlist.variants);
+    const label = resolutionLabel(variant);
+    const matchingAudio = globalThis.DownsAudio.matchingRenditions(playlist, variant);
+    const audioRendition = globalThis.DownsAudio.preferredRendition(matchingAudio);
+    parentInspection = null;
+    void inspectUrl(variant.url, label, {
+      ...context,
+      inlinePlaylistId: "",
+      discoverySource: "network",
+      hasSeparateAudio: Boolean(variant.audioGroup && matchingAudio.length),
+      audioRenditions: matchingAudio,
+      audioPlaylistUrl: audioRendition?.url || "",
+      audioLabel: audioRenditionLabel(audioRendition)
+    });
+    return;
+  }
   const rootLink = selectedLink();
   const eligibility = playlist.kind === "media"
     ? context.discoverySource === "blob-playlist"
@@ -694,6 +737,10 @@ function renderInspection(response, variantLabel = "", context = {}) {
   const downloadAction = renderDownloadAction(playlist, response, variantLabel, context, eligibility);
   if (downloadAction) {
     inspectorEl.append(downloadAction);
+    autoQueuePrimaryDownload(
+      downloadAction,
+      [response.fetch.finalUrl, context.audioPlaylistUrl || "", variantLabel].join("|")
+    );
   }
 
   inspectorEl.append(
@@ -718,7 +765,7 @@ function formatDuration(seconds) {
 
 function renderDashRepresentations(title, representations) {
   if (!representations.length) return null;
-  const section = createElement("section", "subsection");
+  const section = createElement("section", "subsection dash-representations");
   section.append(createElement("h3", "", `${title} (${representations.length})`));
   const list = createElement("ul", "rendition-list dash-representation-list");
   for (const representation of representations.slice(0, 50)) {
@@ -846,7 +893,11 @@ function renderDashDownloadAction(response, eligibility, selection) {
 
 function renderDashInspection(response, selection = {}) {
   const dash = response.dash;
-  const eligibility = globalThis.DownsDash.validateDirectPair(dash, selection.videoId, selection.audioId);
+  let eligibility = globalThis.DownsDash.validateDirectPair(dash, selection.videoId, selection.audioId);
+  if (interfaceMode === "simple" && !selection.videoId && eligibility.supported) {
+    const video = bestVideoChoice(eligibility.videos);
+    eligibility = globalThis.DownsDash.validateDirectPair(dash, video.id, eligibility.audio.id);
+  }
   const normalizedSelection = eligibility.supported
     ? { videoId: eligibility.video.id, audioId: eligibility.audio.id }
     : selection;
@@ -901,7 +952,12 @@ function renderDashInspection(response, selection = {}) {
       "Protected DASH is inspection-only. Downs will not attempt to bypass DRM or CENC."
     ));
   }
-  inspectorEl.append(renderDashDownloadAction(response, eligibility, normalizedSelection));
+  const downloadAction = renderDashDownloadAction(response, eligibility, normalizedSelection);
+  inspectorEl.append(downloadAction);
+  autoQueuePrimaryDownload(
+    downloadAction,
+    [response.fetch.finalUrl, normalizedSelection.videoId || "", normalizedSelection.audioId || ""].join("|")
+  );
   inspectorEl.append(createElement(
     "p",
     "inspector-note",
@@ -1005,9 +1061,12 @@ async function loadDownloadSummary() {
 async function loadPopupSettings() {
   try {
     const stored = await ext.storage.local.get(globalThis.DownsDownload.SETTINGS_KEY);
-    showFullUrls = Boolean(stored[globalThis.DownsDownload.SETTINGS_KEY]?.showFullUrls);
+    const settings = stored[globalThis.DownsDownload.SETTINGS_KEY] || {};
+    showFullUrls = Boolean(settings.showFullUrls);
+    applyInterfaceMode(settings.interfaceMode);
   } catch (_error) {
     showFullUrls = false;
+    applyInterfaceMode("detailed");
   }
 }
 
@@ -1023,7 +1082,9 @@ downloadsButton.addEventListener("click", async () => {
 ext.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "local") {
     if (Object.hasOwn(changes, globalThis.DownsDownload.SETTINGS_KEY)) {
-      showFullUrls = Boolean(changes[globalThis.DownsDownload.SETTINGS_KEY]?.newValue?.showFullUrls);
+      const settings = changes[globalThis.DownsDownload.SETTINGS_KEY]?.newValue || {};
+      showFullUrls = Boolean(settings.showFullUrls);
+      applyInterfaceMode(settings.interfaceMode);
       renderLinks();
     }
     void loadDownloadSummary();

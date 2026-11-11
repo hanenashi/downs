@@ -15,6 +15,8 @@ const settingsDoneButton = document.getElementById("settings-done");
 const dateExampleEl = document.getElementById("date-example");
 const hashExampleEl = document.getElementById("hash-example");
 const filenameModeInputs = [...document.querySelectorAll('input[name="filename-mode"]')];
+const interfaceModeInputs = [...document.querySelectorAll('input[name="interface-mode"]')];
+const managerSurfaceInputs = [...document.querySelectorAll('input[name="manager-surface"]')];
 const showFullUrlsInput = document.getElementById("show-full-urls");
 
 const jobs = new Map();
@@ -32,6 +34,14 @@ let clearExportedPending = false;
 let priorSettingsFocus = null;
 let recentJobId = "";
 let managerNoticeTimer = 0;
+let interfaceMode = "detailed";
+
+function applyInterfaceMode(mode) {
+  interfaceMode = mode === "simple" ? "simple" : "detailed";
+  document.body.classList.toggle("simple-mode", interfaceMode === "simple");
+  showFullUrlsInput.closest(".setting-choice")?.classList.toggle("detailed-setting", interfaceMode === "simple");
+  render();
+}
 
 function createElement(tag, className = "", text) {
   const element = document.createElement(tag);
@@ -173,7 +183,9 @@ function renderActions(job, row) {
     );
   } else if (job.state === "failed") {
     actions.append(actionButton("Retry", "retry", job.id, "action-button primary"));
-    actions.append(actionButton("Details", "details", job.id));
+    if (interfaceMode === "detailed") {
+      actions.append(actionButton("Details", "details", job.id));
+    }
     actions.append(
       actionButton(
         pendingDeletes.has(job.id) ? "Delete?" : "Delete",
@@ -724,6 +736,11 @@ async function loadSettings() {
   dateExampleEl.textContent = globalThis.DownsDownload.dateStampFilename(new Date());
   hashExampleEl.textContent = `${globalThis.DownsDownload.randomHash()}.mp4`;
   showFullUrlsInput.checked = Boolean(settings.showFullUrls);
+  const selectedInterfaceMode = settings.interfaceMode === "simple" ? "simple" : "detailed";
+  const selectedManagerSurface = settings.managerSurface === "compact" ? "compact" : "tab";
+  for (const input of interfaceModeInputs) input.checked = input.value === selectedInterfaceMode;
+  for (const input of managerSurfaceInputs) input.checked = input.value === selectedManagerSurface;
+  applyInterfaceMode(selectedInterfaceMode);
 }
 
 async function saveSettings(patch) {
@@ -815,6 +832,30 @@ for (const input of filenameModeInputs) {
     if (input.checked) void saveFilenameMode(input.value);
   });
 }
+for (const input of interfaceModeInputs) {
+  input.addEventListener("change", () => {
+    if (!input.checked) return;
+    applyInterfaceMode(input.value);
+    void saveSettings({ interfaceMode }).then(() => {
+      announce(`${interfaceMode === "simple" ? "Simple" : "Detailed"} interface enabled.`);
+    });
+  });
+}
+for (const input of managerSurfaceInputs) {
+  input.addEventListener("change", () => {
+    if (!input.checked) return;
+    const managerSurface = input.value === "compact" ? "compact" : "tab";
+    void (async () => {
+      try {
+        await saveSettings({ managerSurface });
+        await ext.runtime.sendMessage({ type: "open-downloads-manager" });
+        announce(`Downloads will open in a ${managerSurface === "compact" ? "compact window" : "browser tab"}.`);
+      } catch (_error) {
+        announce("The manager preference was saved, but this window could not be moved.");
+      }
+    })();
+  });
+}
 showFullUrlsInput.addEventListener("change", () => {
   void saveSettings({ showFullUrls: showFullUrlsInput.checked }).then(() => {
     announce(showFullUrlsInput.checked ? "Full playlist URLs will appear in stream rows." : "Stream rows will use compact summaries.");
@@ -831,7 +872,7 @@ ext.storage.onChanged.addListener((changes, areaName) => {
   let changed = false;
   let addedJob = null;
   for (const [key, change] of Object.entries(changes)) {
-    if (key === globalThis.DownsDownload.SETTINGS_KEY && !settingsLayer.hidden) {
+    if (key === globalThis.DownsDownload.SETTINGS_KEY) {
       void loadSettings();
       continue;
     }
@@ -860,7 +901,10 @@ window.addEventListener("beforeunload", (event) => {
   }
 });
 
-void loadJobs().catch((error) => {
+void (async () => {
+  await loadSettings();
+  await loadJobs();
+})().catch((error) => {
   summaryEl.textContent = "Could not load downloads";
   emptyEl.hidden = false;
   emptyEl.querySelector("h2").textContent = "Downloads unavailable";

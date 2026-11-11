@@ -275,6 +275,7 @@ h1 {
   padding: 27px 25px 24px;
   background: var(--surface);
   border-left: 1px solid var(--line);
+  overflow-y: auto;
 }
 
 .settings-header {
@@ -315,7 +316,8 @@ h1 {
 .close-settings::after { transform: rotate(-45deg); }
 
 .filename-settings,
-.interface-settings {
+.interface-settings,
+.manager-settings {
   display: grid;
   gap: 17px;
   padding: 21px 0 0;
@@ -324,16 +326,27 @@ h1 {
 }
 
 .filename-settings legend,
-.interface-settings legend {
+.interface-settings legend,
+.manager-settings legend {
   padding: 0 0 14px;
   font-size: 13px;
   font-weight: 700;
 }
 
-.interface-settings {
+.interface-settings,
+.manager-settings {
   margin-top: 24px;
   padding-top: 20px;
   border-top: 1px solid var(--line);
+}
+
+.detailed-setting {
+  display: none;
+}
+
+.simple-mode .job-meta,
+.simple-mode .job-details {
+  display: none;
 }
 
 .setting-choice {

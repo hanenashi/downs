@@ -1,5 +1,25 @@
 # Downs handoff — seek-safe MP4 pass + future companion seam
 
+## 2.17 simple workflow + persistent manager surfaces
+
+Settings now separate interface density from manager placement. **Simple** mode
+keeps the detected-stream list and essential job controls, hides diagnostic
+inspection/source-bundle UI, automatically chooses the highest supported
+advertised video rendition, and queues its MP4. **Detailed** mode
+preserves the existing inspection-first workflow and every diagnostic action.
+
+The Downloads page can open in a reused 460×720 compact browser window or a
+normal browser tab. It remains the persistent owner of the media worker; the
+transient toolbar popup never owns active processing. When the configured
+surface changes, the existing manager tab is moved between window types rather
+than reloaded, preserving active work. Existing installs default to the prior
+detailed/tab behavior when either preference is absent.
+
+Chrome-for-Testing 156 verified both settings, the compact 460×720 window, and
+moving the same live Downloads page back into a normal browser window. All 82
+unit tests and the packaged-file validator remain green. Real Kiwi and Firefox
+interaction remains the compatibility gate for this UI pass.
+
 ## 2.16 AV1 parity for separate fMP4 tracks
 
 The existing finite clear separate-track fMP4 worker now accepts either H.264
