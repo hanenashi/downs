@@ -267,15 +267,20 @@ h1 {
 .settings-pane {
   position: absolute;
   top: 0;
+  bottom: 0;
   right: 0;
   display: flex;
   flex-direction: column;
   width: min(340px, 100%);
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
   padding: 27px 25px 24px;
   background: var(--surface);
   border-left: 1px solid var(--line);
   overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .settings-header {
@@ -452,6 +457,7 @@ h1 {
     top: auto;
     bottom: 0;
     width: 100%;
+    height: auto;
     min-height: 0;
     max-height: 88%;
     padding: 21px 18px 18px;

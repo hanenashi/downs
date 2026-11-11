@@ -757,8 +757,9 @@ async function getDownloadJobs() {
     .map(([, value]) => value);
 }
 
-async function openDownloadsManager() {
+async function openDownloadsManager(showSettings = false) {
   const managerUrl = ext.runtime.getURL("downloads.html");
+  const targetUrl = showSettings ? `${managerUrl}#settings` : managerUrl;
   const stored = await jobStorageArea.get(globalThis.DownsDownload.SETTINGS_KEY);
   const surface = stored[globalThis.DownsDownload.SETTINGS_KEY]?.managerSurface === "compact"
     ? "compact"
@@ -789,11 +790,14 @@ async function openDownloadsManager() {
       await ext.tabs.update(existing.id, { active: true });
       await ext.windows.update(existing.windowId, { focused: true });
     }
+    if (showSettings) {
+      await ext.tabs.update(existing.id, { url: targetUrl });
+    }
     return existing.id;
   }
   if (surface === "compact") {
     const created = await ext.windows.create({
-      url: managerUrl,
+      url: targetUrl,
       type: "popup",
       focused: true,
       width: 460,
@@ -801,7 +805,7 @@ async function openDownloadsManager() {
     });
     return created?.tabs?.[0]?.id;
   }
-  const createdTab = await ext.tabs.create({ url: managerUrl });
+  const createdTab = await ext.tabs.create({ url: targetUrl });
   return createdTab?.id;
 }
 
@@ -892,6 +896,11 @@ ext.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message?.type === "open-downloads-manager") {
       sendResponse({ ok: true, tabId: await openDownloadsManager() });
+      return;
+    }
+
+    if (message?.type === "open-downloads-settings") {
+      sendResponse({ ok: true, tabId: await openDownloadsManager(true) });
       return;
     }
 

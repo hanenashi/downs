@@ -67,9 +67,15 @@ h1 {
   font-size: 12px;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
 .text-button {
   min-height: 36px;
-  padding: 8px 0 8px 12px;
+  padding: 8px 0;
   color: var(--accent);
   background: transparent;
   cursor: pointer;

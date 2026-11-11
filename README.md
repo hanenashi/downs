@@ -18,7 +18,7 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.17 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downs 2.17.1 is experimental. In addition to the bounded MPEG-TS path, persistent
 Downloads manager, request-context replay, and playback grouping, it can now
 assemble conservative modern HLS layouts: finite unencrypted fMP4/CMAF VOD
 with either separate H.264-or-AV1 video and AAC tracks or one muxed
@@ -153,7 +153,9 @@ of the bounded 30-job history.
 The popup's **Downloads** entry shows active and ready-to-save counts and opens
 the existing manager surface when one is already present. Downs reuses and can
 move that page between a compact window and a normal tab without reloading it,
-so changing the destination does not discard an active worker.
+so changing the destination does not discard an active worker. The popup's
+**Settings** action opens that same persistent manager with its Settings pane
+already visible.
 
 The manager's **Settings** pane controls names for new downloads. **Suggested
 title** preserves the existing behavior, **Date stamp** produces names such as
@@ -421,7 +423,7 @@ extension packages.
 
 ## Direction
 
-The immediate work is real-site Firefox/Kiwi validation of the bounded 2.17
+The immediate work is real-site Firefox/Kiwi validation of the bounded 2.17.1
 AV1 parity, DASH source-bundle, muxed HLS/CMAF, Blob, and AES-128
 compatibility testing. Live RECORD remains the next large architecture pass.
 Dark mode, editable preflight filenames, and broader manager-row interactions

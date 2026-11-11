@@ -775,6 +775,12 @@ function closeSettings() {
   priorSettingsFocus = null;
 }
 
+function openSettingsFromHash() {
+  if (location.hash !== "#settings") return;
+  history.replaceState(null, "", `${location.pathname}${location.search}`);
+  void openSettings();
+}
+
 async function handleAction(action, job) {
   if (action === "cancel") {
     await cancelJob(job);
@@ -864,6 +870,7 @@ showFullUrlsInput.addEventListener("change", () => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !settingsLayer.hidden) closeSettings();
 });
+window.addEventListener("hashchange", openSettingsFromHash);
 ext.downloads.onChanged.addListener(onDownloadChanged);
 ext.storage.onChanged.addListener((changes, areaName) => {
   if (areaName !== "local") {
@@ -904,6 +911,7 @@ window.addEventListener("beforeunload", (event) => {
 void (async () => {
   await loadSettings();
   await loadJobs();
+  openSettingsFromHash();
 })().catch((error) => {
   summaryEl.textContent = "Could not load downloads";
   emptyEl.hidden = false;

@@ -3,6 +3,7 @@ const statusEl = document.getElementById("status");
 const linksEl = document.getElementById("links");
 const inspectorEl = document.getElementById("inspector");
 const refreshButton = document.getElementById("refresh");
+const settingsButton = document.getElementById("open-settings");
 const downloadsButton = document.getElementById("open-downloads");
 const downloadCountEl = document.getElementById("download-count");
 
@@ -1071,6 +1072,14 @@ async function loadPopupSettings() {
 }
 
 refreshButton.addEventListener("click", loadLinks);
+settingsButton.addEventListener("click", async () => {
+  settingsButton.disabled = true;
+  try {
+    await ext.runtime.sendMessage({ type: "open-downloads-settings" });
+  } finally {
+    settingsButton.disabled = false;
+  }
+});
 downloadsButton.addEventListener("click", async () => {
   downloadsButton.disabled = true;
   try {

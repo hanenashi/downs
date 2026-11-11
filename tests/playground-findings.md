@@ -319,3 +319,16 @@ content with vertical scrolling enabled, so filename, interface, manager, and
 Done controls remained reachable. The extension validator, syntax checks, and
 all 82 dependency-free unit tests passed. Real toolbar-popup interaction on
 Kiwi and Firefox remains the manual compatibility gate.
+
+## 2026-11-11 — Settings access and short-window scroll repair
+
+The packaged 2.17.1 Chromium extension exposed Settings beside Refresh at
+420×640 with no horizontal overflow or console warnings/errors. Activating it
+opened the configured compact Downloads window at 460×720 with Settings already
+visible.
+
+After moving the same page to a normal browser window and shortening it to
+1280×560 outer size (473 CSS pixels of content height), the desktop Settings
+pane remained exactly viewport-bounded. Its 867-pixel content scrolled 394
+pixels, bringing the complete manager choice, explanatory note, and Done button
+inside the viewport. Physical High Sierra Firefox verification remains pending.

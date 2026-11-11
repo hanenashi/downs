@@ -1,5 +1,21 @@
 # Downs handoff — seek-safe MP4 pass + future companion seam
 
+## 2.17.1 settings access and short-window scrolling
+
+The toolbar popup now exposes **Settings** beside Refresh. It opens or focuses
+the configured persistent Downloads surface and reveals its existing Settings
+pane through a same-document hash; an active manager is not reloaded and its
+worker remains owned by the Downloads page.
+
+The desktop side pane is now bounded to the viewport top and bottom instead of
+growing beyond short browser windows. It scrolls internally with touch momentum,
+while the narrow compact-window layout remains an 88%-height bottom sheet.
+Chrome-for-Testing 156 verified the popup entry, a 460×720 compact manager, and
+a deliberately short 1280×560 normal browser window. In the latter, the pane
+scrolled 394 pixels and made Done reachable without horizontal overflow or
+console errors. Physical Firefox on the High Sierra Mac remains the decisive
+compatibility check.
+
 ## 2.17 simple workflow + persistent manager surfaces
 
 Settings now separate interface density from manager placement. **Simple** mode
