@@ -18,7 +18,7 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.14 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downs 2.15 is experimental. In addition to the bounded MPEG-TS path, persistent
 Downloads manager, request-context replay, and playback grouping, it can now
 assemble conservative modern HLS layouts: finite unencrypted fMP4/CMAF VOD
 with either separate H.264/AAC tracks or one muxed H.264-or-AV1 plus AAC-LC
@@ -59,6 +59,8 @@ It can:
 - build truthful timing, keyframe, sample-size, and 64-bit chunk-offset tables;
 - optionally save an exact source diagnostic TAR containing fetched segments,
   local replay playlists, sizes, durations, and SHA-256 hashes;
+- preserve selected DASH video/audio initialization and media fragments in the
+  same offline-verifiable source-bundle format;
 - stream output to browser-private storage when available, with a bounded
   in-memory fallback;
 - persist queued, active, finished, failed, and cancelled job metadata;
@@ -290,7 +292,7 @@ node tools/replay-source-bundle.mjs /path/capture.downs-source.tar \
 The tool checks TAR header integrity, rejects unsafe archive paths, verifies
 every media file against the manifest's size and SHA-256, then rebuilds the MP4
 with the same bundled mux.js and flat finalizer used by the extension. It
-supports the current MPEG-TS, separate-track fMP4, and muxed fMP4 source-bundle
+supports the current MPEG-TS, HLS fMP4, and selected DASH fMP4 source-bundle
 modes, never contacts the original host, and removes its temporary extraction
 directory.
 It refuses to replace an existing output unless `--force` is supplied.
@@ -398,8 +400,8 @@ extension packages.
 
 ## Direction
 
-The immediate work is real-site Firefox/Kiwi validation of the bounded 2.14
-muxed HLS/CMAF and 2.13 DASH paths, plus continued Blob and AES-128
+The immediate work is real-site Firefox/Kiwi validation of the bounded 2.15
+source-bundle, 2.14 muxed HLS/CMAF, and 2.13 DASH paths, plus Blob and AES-128
 compatibility testing. Live RECORD remains the next large architecture pass.
 Dark mode, editable preflight filenames, and broader manager-row interactions
 remain separate UI work.

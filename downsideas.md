@@ -108,7 +108,8 @@ Tests: fixture server with shifting live window, late arrival, repeated URLs, se
 - **Direct file writing:** Upstream `v3/data/job/mget/plugins/disk.js` uses a File System Access API writer. Downs' OPFS/private-copy then explicit Save design is intentional. An opt-in direct-to-file mode may help huge live recordings on supporting desktop browsers, but must degrade gracefully on Firefox/Kiwi and expose partial-file semantics.
 - **Filenames:** Upstream `v3/data/job/build.js` supports placeholders and page-derived values. Downs already offers suggested title/date/hash. Explore only a minimal, sanitized naming-template option if users need it; never execute selectors from untrusted input without controls.
 - **Agent/API seam:** Upstream `v3/mcp/mcp.json` describes `find_media` and `download_media` commands. Later consider a narrow extension-message or explicitly enabled local API for Codex to list detected media, inspect support reasons, and enqueue jobs. Authentication/authorization, user consent and data minimization are required. No silent remote-control surface.
-- **Diagnostics:** Keep Downs' source bundle and offline replay tool; add new fixture types and provenance metadata as modes grow.
+- **Diagnostics:** HLS and supported DASH source bundles now replay offline;
+  keep adding fixture types and provenance metadata as modes grow.
 
 ## What NOT to copy/replace
 

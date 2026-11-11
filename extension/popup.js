@@ -805,35 +805,41 @@ function renderDashDownloadAction(response, eligibility, selection) {
   section.append(ready);
 
   const label = eligibility.video.height ? `${eligibility.video.height}p` : "DASH";
-  const button = createElement("button", "download-button", `Download ${label}`);
-  button.type = "button";
-  button.addEventListener("click", async () => {
-    button.disabled = true;
-    button.textContent = "Adding to Downloads…";
-    try {
-      const rootLink = selectedLink();
-      const result = await ext.runtime.sendMessage({
-        type: "start-dash-download",
-        url: response.fetch.finalUrl,
-        videoRepresentationId: eligibility.video.id,
-        audioRepresentationId: eligibility.audio.id,
-        videoLabel: label,
-        requestContext: rootLink?.requestContext || {}
-      });
-      if (!result?.ok) throw new Error(result?.error?.message || "The DASH download could not be added.");
-      button.textContent = "Added to Downloads ✓";
-    } catch (error) {
-      button.disabled = false;
-      button.textContent = `Download ${label}`;
-      section.querySelector(".download-error")?.remove();
-      section.append(createElement("p", "download-error", error?.message || "The DASH download could not be added."));
-    }
-  });
-  section.append(button);
+  const makeButton = (outputMode) => {
+    const sourceBundle = outputMode === "source-bundle";
+    const idleLabel = sourceBundle ? "Source bundle" : `Download ${label}`;
+    const button = createElement("button", sourceBundle ? "source-button" : "download-button", idleLabel);
+    button.type = "button";
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      button.textContent = sourceBundle ? "Adding bundle…" : "Adding to Downloads…";
+      try {
+        const rootLink = selectedLink();
+        const result = await ext.runtime.sendMessage({
+          type: "start-dash-download",
+          outputMode,
+          url: response.fetch.finalUrl,
+          videoRepresentationId: eligibility.video.id,
+          audioRepresentationId: eligibility.audio.id,
+          videoLabel: label,
+          requestContext: rootLink?.requestContext || {}
+        });
+        if (!result?.ok) throw new Error(result?.error?.message || "The DASH download could not be added.");
+        button.textContent = "Added to Downloads ✓";
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = idleLabel;
+        section.querySelector(".download-error")?.remove();
+        section.append(createElement("p", "download-error", error?.message || "The DASH download could not be added."));
+      }
+    });
+    return button;
+  };
+  section.append(makeButton("mp4"), makeButton("source-bundle"));
   section.append(createElement(
     "p",
     "download-reason",
-    "Downs combines the selected H.264 and AAC fMP4 tracks into one seekable MP4. DASH source bundles are not enabled in this pass."
+    "MP4 combines the selected H.264 and AAC tracks into one seekable file. Source bundle preserves their exact init and media fragments for offline replay."
   ));
   return section;
 }

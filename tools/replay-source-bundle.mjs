@@ -432,7 +432,7 @@ async function main() {
     writer = outputWriter(outputPath, options.force);
     const builder = manifest.supportMode === "direct-ts-vod"
       ? replayTs(manifest, temporary, names, writer)
-      : manifest.supportMode === "direct-fmp4-split-vod"
+      : ["direct-fmp4-split-vod", "direct-dash-fmp4-vod"].includes(manifest.supportMode)
         ? replaySplitFmp4(manifest, temporary, names, writer)
         : manifest.supportMode === "direct-fmp4-muxed-vod"
           ? replayMuxedFmp4(manifest, temporary, names, writer)

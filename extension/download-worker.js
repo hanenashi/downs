@@ -782,8 +782,8 @@ function sourceReadme() {
   return new TextEncoder().encode([
     "Downs source diagnostic bundle",
     "",
-    "Media files are the exact bytes fetched from the selected HLS playlists.",
-    "Playlist URLs were replaced with local paths; cookies and authorization values are not included.",
+    "Media files are the exact bytes fetched from the selected HLS or DASH tracks.",
+    "Remote media URLs were replaced with local paths; cookies and authorization values are not included.",
     "This bundle still contains the complete downloaded media and should be shared deliberately.",
     "See manifest.json for ordering, durations, sizes, and SHA-256 hashes.",
     ""
@@ -916,10 +916,134 @@ async function runSourceBundle(job, signal) {
   });
 }
 
+async function runDashSourceBundle(job, signal) {
+  if (!job?.id || !job.playlistUrl || !job.dashVideoId || !job.dashAudioId) {
+    throw new DownloadError("job", "The DASH source job is missing its manifest or representation selection.");
+  }
+  post("progress", { phase: "playlist", message: "Checking DASH source tracks…", completed: 0, total: 0, bytes: 0 });
+  const dash = await fetchDash(job.playlistUrl, signal);
+  const eligibility = globalThis.DownsDash.validateDirectPair(dash, job.dashVideoId, job.dashAudioId);
+  if (!eligibility.supported) throw new DownloadError(eligibility.code, eligibility.reason);
+
+  const videoTrack = {
+    mapUrl: eligibility.video.initializationUrl,
+    segments: eligibility.video.segments
+  };
+  const audioTrack = {
+    mapUrl: eligibility.audio.initializationUrl,
+    segments: eligibility.audio.segments
+  };
+  const schedule = globalThis.DownsFmp4.interleaveSegments(videoTrack.segments, audioTrack.segments);
+  if (schedule.length > MAX_SEGMENTS) {
+    throw new DownloadError(
+      "segment-count",
+      `The selected tracks have more than the ${MAX_SEGMENTS.toLocaleString()} segment safety limit.`
+    );
+  }
+  const [videoInit, audioInit] = await Promise.all([
+    fetchBytes(videoTrack.mapUrl, signal, "Video initialization segment"),
+    fetchBytes(audioTrack.mapUrl, signal, "Audio initialization segment")
+  ]);
+
+  activeSink = await createOutputSink(job.id, "tar", "application/x-tar");
+  await writeTarEntry(activeSink, "README.txt", sourceReadme());
+  let inputBytes = videoInit.bytes.byteLength + audioInit.bytes.byteLength;
+  let outputBytes = 0;
+  const writeTracked = async (name, data) => {
+    const before = data.byteLength;
+    await writeTarEntry(activeSink, name, data);
+    outputBytes += 512 + before + globalThis.DownsTar.padding(before).byteLength;
+  };
+  await writeTracked("video/playlist.m3u8", globalThis.DownsTar.normalizedPlaylist(videoTrack));
+  await writeTracked("audio/playlist.m3u8", globalThis.DownsTar.normalizedPlaylist(audioTrack));
+  await writeTracked("video/init.mp4", videoInit.bytes);
+  await writeTracked("audio/init.mp4", audioInit.bytes);
+  const manifest = {
+    format: "downs-source-1",
+    createdAt: new Date().toISOString(),
+    supportMode: eligibility.code,
+    sourceType: "dash",
+    sourceHost: sourceHost(job.playlistUrl),
+    tracks: [
+      {
+        kind: "video",
+        representationId: eligibility.video.id,
+        playlist: "video/playlist.m3u8",
+        init: {
+          file: "video/init.mp4",
+          size: videoInit.bytes.byteLength,
+          sha256: await sha256Hex(videoInit.bytes)
+        },
+        segments: []
+      },
+      {
+        kind: "audio",
+        representationId: eligibility.audio.id,
+        playlist: "audio/playlist.m3u8",
+        init: {
+          file: "audio/init.mp4",
+          size: audioInit.bytes.byteLength,
+          sha256: await sha256Hex(audioInit.bytes)
+        },
+        segments: []
+      }
+    ]
+  };
+
+  post("progress", { phase: "segments", message: "Capturing DASH source media", completed: 0, total: schedule.length, bytes: inputBytes });
+  await globalThis.DownsDownload.processInOrder(
+    schedule,
+    FETCH_CONCURRENCY,
+    async (segment, index) => {
+      ensureNotCancelled(signal);
+      const response = await fetchBytes(segment.url, signal, "DASH source segment", { segmentIndex: index + 1 });
+      inputBytes += response.bytes.byteLength;
+      return { bytes: response.bytes, sha256: await sha256Hex(response.bytes) };
+    },
+    async (result, segment, index) => {
+      ensureNotCancelled(signal);
+      const file = globalThis.DownsTar.segmentName(segment.kind, segment.index, "m4s");
+      await writeTracked(file, result.bytes);
+      manifest.tracks.find((track) => track.kind === segment.kind).segments.push({
+        file,
+        duration: Number(segment.duration) || 0,
+        size: result.bytes.byteLength,
+        sha256: result.sha256
+      });
+      post("progress", {
+        phase: "segments",
+        message: "Capturing DASH source media",
+        completed: index + 1,
+        total: schedule.length,
+        bytes: inputBytes,
+        outputBytes
+      });
+    }
+  );
+
+  ensureNotCancelled(signal);
+  post("progress", { phase: "remuxing", message: "Finalizing DASH source bundle…", completed: schedule.length, total: schedule.length, bytes: inputBytes, outputBytes });
+  await writeTracked("manifest.json", new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`));
+  await activeSink.write(globalThis.DownsTar.endBlocks());
+  outputBytes += 1024;
+  const result = await activeSink.finish();
+  activeSink = null;
+  post("complete", {
+    file: result.file,
+    size: result.size,
+    storageName: result.storageName,
+    outputStorage: result.storageName ? "opfs" : "memory",
+    sourceBytes: inputBytes
+  });
+}
+
 async function runJob(job) {
   activeController = new AbortController();
   activeRequestContext = job?.requestContext || {};
   if (job?.outputMode === "source-bundle") {
+    if (job?.supportMode === "direct-dash-fmp4-vod") {
+      return runDashSourceBundle(job, activeController.signal);
+    }
     return runSourceBundle(job, activeController.signal);
   }
   if (job?.supportMode === "direct-dash-fmp4-vod") {

@@ -1,5 +1,26 @@
 # Downs handoff — seek-safe MP4 pass + future companion seam
 
+## 2.15 DASH source-bundle parity
+
+Supported static DASH selections now expose the same optional **Source bundle**
+action as HLS. A DASH diagnostic job refetches and revalidates the selected
+representation IDs, preserves both initialization segments and every selected
+media fragment byte-for-byte, and writes local video/audio playlists plus size
+and SHA-256 metadata. Remote MPD URLs, cookies, authorization values, and signed
+media URLs are not stored in the archive.
+
+`tools/replay-source-bundle.mjs` accepts the resulting
+`direct-dash-fmp4-vod` manifest and rebuilds it through the existing split-track
+combiner and flat finalizer without contacting the source host. The ordinary
+DASH MP4 action and its strict static, clear H.264/AAC-LC gates are unchanged.
+
+Chrome-for-Testing 156 completed the generated six-second DASH fixture through
+the new popup action, persistent manager, OPFS TAR, archive validation, and
+offline replay at 420×640. The 272,384-byte bundle held two local playlists,
+two init segments, seven exact media fragments, and manifest hashes. Replay
+produced the same 256,938-byte MP4 as the direct path: 150 H.264 frames, 283 AAC
+frames, 6.08-second container duration, and a clean full decode.
+
 ## 2.14 bounded muxed HLS/CMAF DIRECT update
 
 Downs now accepts a second narrow HLS fMP4 shape: finite, clear VOD with one
@@ -37,8 +58,8 @@ non-HTTP media.
 The popup exposes video/audio representation selectors only when the pair
 passes those gates. Jobs persist the MPD URL and representation IDs, refetch and
 revalidate on Retry, verify actual initialization tracks, then reuse the
-existing split-fMP4 combiner and flat-MP4 finalizer. DASH source bundles remain
-disabled in this first pass.
+existing split-fMP4 combiner and flat-MP4 finalizer. The later 2.15 pass adds
+offline source bundles without widening these download gates.
 
 Chrome-for-Testing 156 completed the generated six-second SegmentTimeline
 fixture through detection, popup, queue, worker, and OPFS. The 256,938-byte

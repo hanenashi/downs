@@ -279,3 +279,17 @@ The reported 144p AV1/AAC specimen then completed through the packaged
 extension: 146 fragments produced a 6,901,421-byte flat MP4 lasting 583.648
 seconds, with 14,007 AV1 frames and 27,359 AAC frames. Video and audio durations
 differed by about 23 ms and a full FFmpeg decode completed without errors.
+
+## 2026-11-11 — DASH source-bundle parity
+
+Chrome-for-Testing 156 exercised the generated six-second DASH fixture through
+the new **Source bundle** action at 420×640. The completed 272,384-byte TAR
+contained local video/audio playlists, both initialization segments, all seven
+selected `.m4s` fragments, and verified sizes plus SHA-256 hashes. No remote MPD
+or signed media URL was stored.
+
+`tools/replay-source-bundle.mjs` rebuilt the archive without source-network
+access. Its 256,938-byte MP4 matched the direct-path fixture output, with 150
+H.264 frames, 283 AAC frames, 6.08-second container duration, and clean full
+decode. The only browser console entry was the fixture page's irrelevant
+missing favicon request.

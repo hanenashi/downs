@@ -720,6 +720,7 @@ async function startDashDownloadJob(message) {
   const [sourceTab] = await ext.tabs.query({ active: true, currentWindow: true });
   const storedSettings = await jobStorageArea.get(globalThis.DownsDownload.SETTINGS_KEY);
   const filenameMode = storedSettings[globalThis.DownsDownload.SETTINGS_KEY]?.filenameMode || "suggested";
+  const outputMode = message.outputMode === "source-bundle" ? "source-bundle" : "mp4";
   const id = createJobId();
   const variantLabel = message.videoLabel || (eligibility.video.height ? `${eligibility.video.height}p` : "DASH");
   const suggestedFilename = globalThis.DownsDownload.filenameForMode(
@@ -734,12 +735,12 @@ async function startDashDownloadJob(message) {
     dashVideoId: eligibility.video.id,
     dashAudioId: eligibility.audio.id,
     sourcePageTitle: sourceTab?.title || "",
-    filename: globalThis.DownsDownload.outputFilename(suggestedFilename, "mp4"),
+    filename: globalThis.DownsDownload.outputFilename(suggestedFilename, outputMode),
     variantLabel,
     hasSeparateAudio: true,
     audioLabel: eligibility.audio.language || eligibility.audio.codecs || "AAC",
     supportMode: eligibility.code,
-    outputMode: "mp4",
+    outputMode,
     supportSummary: eligibility.reason,
     requestContext
   });
