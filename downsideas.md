@@ -17,6 +17,8 @@ Downs 2.9 already:
 - Detects network M3U8 requests, inspects master/media playlists, variants and audio renditions.
 - Supports finite, unencrypted MPEG-TS VOD remux through bundled mux.js.
 - Supports a bounded split H.264 + AAC fMP4/CMAF VOD layout.
+- Supports bounded muxed H.264-or-AV1 + AAC-LC fMP4/CMAF VOD with explicit
+  multi-track sample-run addressing.
 - Finalizes actual media samples as **flat, seek-friendly MP4** with timing and sync-sample tables, without re-encoding.
 - Maintains persistent jobs, OPFS-backed output, explicit save/export, cancellation, retries and source-bundle TAR diagnostic replay.
 - Replays sanitized Referer context through temporary exact-URL rules; does not persist cookies/authorization secrets.

@@ -119,7 +119,12 @@
       };
     }
     if (playlist.maps?.length || playlist.mapUrl || playlist.segmented === "fmp4") {
-      return unsupported("fmp4", "fMP4 / CMAF playlists are not supported yet.");
+      const issue = fmp4TrackIssue(playlist, "The media playlist");
+      return issue || {
+        supported: true,
+        code: "direct-fmp4-muxed-vod",
+        reason: "VOD · fMP4 / CMAF · muxed A/V · unencrypted"
+      };
     }
     if (playlist.iframeOnly) {
       return unsupported("iframe-only", "I-frame-only playlists are not supported.");

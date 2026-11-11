@@ -9,6 +9,7 @@ const fixtureRoot = path.resolve(__dirname, "..", "tests", "fixtures");
 const modernFixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "modern-fixture");
 const aesFixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "aes-fixture");
 const dashFixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "dash-fixture");
+const muxedFmp4FixtureRoot = path.resolve(__dirname, "..", "test-artifacts", "muxed-fmp4-fixture");
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".m3u8", "application/vnd.apple.mpegurl; charset=utf-8"],
@@ -37,6 +38,12 @@ function fixturePath(urlValue) {
     const relative = pathname.replace(/^\/dash-media\/?/, "");
     const resolved = path.resolve(dashFixtureRoot, relative);
     if (resolved !== dashFixtureRoot && !resolved.startsWith(`${dashFixtureRoot}${path.sep}`)) return null;
+    return resolved;
+  }
+  if (pathname === "/muxed-fmp4-media" || pathname.startsWith("/muxed-fmp4-media/")) {
+    const relative = pathname.replace(/^\/muxed-fmp4-media\/?/, "");
+    const resolved = path.resolve(muxedFmp4FixtureRoot, relative);
+    if (resolved !== muxedFmp4FixtureRoot && !resolved.startsWith(`${muxedFmp4FixtureRoot}${path.sep}`)) return null;
     return resolved;
   }
   const relative = pathname === "/" ? "download-page.html" : pathname.replace(/^\/+/, "");
@@ -133,6 +140,7 @@ function main(argv = process.argv.slice(2)) {
     const displayHost = host === "0.0.0.0" ? "DEVICE-IP" : host;
     console.log(`Downs fixture page: http://${displayHost}:${port}/download-page.html`);
     console.log(`Modern fixture page: http://${displayHost}:${port}/modern-page.html`);
+    console.log(`Muxed fMP4 fixture page: http://${displayHost}:${port}/muxed-fmp4-page.html`);
     console.log("Press Ctrl+C to stop.");
   });
   return 0;

@@ -356,6 +356,25 @@ function replaySplitFmp4(manifest, extractionRoot, names, writer) {
 }
 
 
+function replayMuxedFmp4(manifest, extractionRoot, names, writer) {
+  const track = manifest.tracks.find((entry) => entry.kind === "muxed");
+  if (!track?.init || manifest.tracks.length !== 1) {
+    throw new Error("Muxed fMP4 replay requires one initialized muxed track.");
+  }
+  const initialization = new Uint8Array(
+    readFileSync(bundleFile(extractionRoot, track.init.file, names))
+  );
+  const builder = new FlatMp4Builder(initialization);
+  writer.append(builder.initialBytes);
+  track.segments.forEach((segment) => {
+    const source = new Uint8Array(readFileSync(bundleFile(extractionRoot, segment.file, names)));
+    for (const part of builder.consume(source, writer.offset)) writer.append(part);
+  });
+  writer.append(builder.finalize());
+  return builder;
+}
+
+
 function replaySummary(builder) {
   return [...builder.tracks.values()].map((track) => ({
     id: track.id,
@@ -415,6 +434,8 @@ async function main() {
       ? replayTs(manifest, temporary, names, writer)
       : manifest.supportMode === "direct-fmp4-split-vod"
         ? replaySplitFmp4(manifest, temporary, names, writer)
+        : manifest.supportMode === "direct-fmp4-muxed-vod"
+          ? replayMuxedFmp4(manifest, temporary, names, writer)
         : (() => { throw new Error(`Unsupported replay mode: ${manifest.supportMode}`); })();
     writer.close();
     writer = null;

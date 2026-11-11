@@ -256,3 +256,26 @@ with 240 H.264 frames at 640×360, 48 kHz AAC, finite track durations, no decode
 timestamp regressions, and a clean full decode. An older time-addressed HE-AAC
 vector produced a shorter audio timeline and non-monotonic decode diagnostics;
 2.13 therefore gates DASH audio to the proven AAC-LC `mp4a.40.2` profile.
+
+## 2026-11-11 — Bounded muxed HLS/CMAF DIRECT
+
+A real finite clear HLS media playlist exposed a shared fMP4 initialization
+segment with one AV1 video track and one AAC-LC audio track. Each four-second
+fragment contained two `traf` boxes and many explicitly addressed `trun` sample
+runs interleaved in one `mdat`, which the earlier one-track fragment indexer
+correctly rejected. The 2.14 pass adds bounded multi-track/multi-run indexing
+without transcoding and keeps map changes, ranges, encryption, discontinuities,
+implicit complex offsets, payload gaps/overlaps, and unsupported codecs out of
+DIRECT.
+
+Chrome-for-Testing 156 completed the generated six-second H.264/AAC muxed
+fixture through inspection, queueing, the worker, and OPFS at 420×640. Its
+256,787-byte output contained 150 video frames plus 283 audio frames and passed
+full decode. The source-bundle action preserved `init.mp4`, three exact `.m4s`
+files, a local mapped playlist, sizes, and hashes; offline replay reproduced the
+same MP4 hash.
+
+The reported 144p AV1/AAC specimen then completed through the packaged
+extension: 146 fragments produced a 6,901,421-byte flat MP4 lasting 583.648
+seconds, with 14,007 AV1 frames and 27,359 AAC frames. Video and audio durations
+differed by about 23 ms and a full FFmpeg decode completed without errors.

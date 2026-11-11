@@ -229,7 +229,11 @@
     if (flags & 0x000001) {
       throw new Error("Absolute fragment data offsets are not supported.");
     }
-    const result = { trackId, ...(defaults.get(trackId) || {}) };
+    const result = {
+      trackId,
+      baseIsMoof: Boolean(flags & 0x020000),
+      ...(defaults.get(trackId) || {})
+    };
     if (flags & 0x000002) {
       result.descriptionIndex = view.getUint32(offset);
       offset += 4;
@@ -339,53 +343,79 @@
         if (box.type === "moof") {
           if (pendingMoof) throw new Error("A movie fragment is missing its media data box.");
           pendingMoof = box;
-        } else if (box.type === "mdat" && pendingMoof) {
+        } else if (box.type === "mdat") {
+          if (!pendingMoof) throw new Error("A media-data box has no preceding movie fragment.");
           const trafs = Fmp4.boxesIn(data, pendingMoof.content, pendingMoof.end)
             .filter((entry) => entry.type === "traf");
-          if (trafs.length !== 1) {
-            throw new Error("Each supported movie fragment must contain exactly one track fragment.");
-          }
-          const children = Fmp4.boxesIn(data, trafs[0].content, trafs[0].end);
-          const tfhdBox = children.find((entry) => entry.type === "tfhd");
-          const tfdtBox = children.find((entry) => entry.type === "tfdt");
-          const truns = children.filter((entry) => entry.type === "trun");
-          if (!tfhdBox || !tfdtBox || truns.length !== 1) {
-            throw new Error("Each supported track fragment needs one tfhd, tfdt, and trun.");
-          }
-          const tfhd = parseTfhd(data, tfhdBox, this.defaults);
-          const track = this.tracks.get(tfhd.trackId);
-          if (!track) throw new Error(`Fragment references unknown track ${tfhd.trackId}.`);
-          const decodeTime = parseDecodeTime(data, tfdtBox);
-          const trun = parseTrun(data, truns[0], tfhd);
-          if (trun.dataOffset === null || pendingMoof.start + trun.dataOffset !== box.content) {
-            throw new Error("Fragment sample data does not begin at the expected media-data offset.");
-          }
-          const sampleBytes = trun.samples.reduce((total, sample) => total + sample.size, 0);
-          if (sampleBytes !== box.end - box.content) {
-            throw new Error("Fragment sample sizes do not match its media-data payload.");
-          }
-          if (track.firstDecodeTime === null) track.firstDecodeTime = decodeTime;
-          const timelineTolerance = Math.max(1, Math.ceil(track.timescale / 1000));
-          if (track.sizes.length && Math.abs(decodeTime - track.decodeEnd) > timelineTolerance) {
-            throw new Error("Fragment decode timeline has a gap or regression.");
-          }
           const writeOffset = outputOffset + writes.reduce((total, part) => total + part.byteLength, 0);
-          track.chunks.push({
-            offset: writeOffset + (box.content - box.start),
-            sampleCount: trun.samples.length,
-            descriptionIndex: tfhd.descriptionIndex || 1
-          });
-          let sampleNumber = track.sizes.length;
-          for (const sample of trun.samples) {
-            sampleNumber += 1;
-            track.sizes.push(sample.size);
-            track.durations.push(sample.duration);
-            track.compositionOffsets.push(sample.compositionOffset);
-            if (track.kind === "vide" && isSyncSample(sample.flags)) {
-              track.syncSamples.push(sampleNumber);
+          const ranges = [];
+          const fragmentTrackIds = new Set();
+          for (const traf of trafs) {
+            const children = Fmp4.boxesIn(data, traf.content, traf.end);
+            const tfhdBox = children.find((entry) => entry.type === "tfhd");
+            const tfdtBox = children.find((entry) => entry.type === "tfdt");
+            const truns = children.filter((entry) => entry.type === "trun");
+            if (!tfhdBox || !tfdtBox || !truns.length) {
+              throw new Error("Each supported track fragment needs one tfhd, one tfdt, and at least one trun.");
             }
+            const tfhd = parseTfhd(data, tfhdBox, this.defaults);
+            if (fragmentTrackIds.has(tfhd.trackId)) {
+              throw new Error(`Fragment repeats track ${tfhd.trackId} in multiple traf boxes.`);
+            }
+            fragmentTrackIds.add(tfhd.trackId);
+            const track = this.tracks.get(tfhd.trackId);
+            if (!track) throw new Error(`Fragment references unknown track ${tfhd.trackId}.`);
+            if ((trafs.length > 1 || truns.length > 1) && !tfhd.baseIsMoof) {
+              throw new Error("Complex fragments must declare the movie fragment as their data-offset base.");
+            }
+            let decodeTime = parseDecodeTime(data, tfdtBox);
+            if (track.firstDecodeTime === null) track.firstDecodeTime = decodeTime;
+            const timelineTolerance = Math.max(1, Math.ceil(track.timescale / 1000));
+            if (track.sizes.length && Math.abs(decodeTime - track.decodeEnd) > timelineTolerance) {
+              throw new Error("Fragment decode timeline has a gap or regression.");
+            }
+            let sampleNumber = track.sizes.length;
+            for (const trunBox of truns) {
+              const trun = parseTrun(data, trunBox, tfhd);
+              if (trun.dataOffset === null) {
+                throw new Error("Each supported sample run needs an explicit media-data offset.");
+              }
+              const start = pendingMoof.start + trun.dataOffset;
+              const sampleBytes = trun.samples.reduce((total, sample) => total + sample.size, 0);
+              const end = start + sampleBytes;
+              if (start < box.content || end > box.end) {
+                throw new Error("A fragment sample run points outside its media-data payload.");
+              }
+              ranges.push({ start, end });
+              track.chunks.push({
+                offset: writeOffset + (start - box.start),
+                sampleCount: trun.samples.length,
+                descriptionIndex: tfhd.descriptionIndex || 1
+              });
+              for (const sample of trun.samples) {
+                sampleNumber += 1;
+                track.sizes.push(sample.size);
+                track.durations.push(sample.duration);
+                track.compositionOffsets.push(sample.compositionOffset);
+                if (track.kind === "vide" && isSyncSample(sample.flags)) {
+                  track.syncSamples.push(sampleNumber);
+                }
+              }
+              decodeTime += trun.samples.reduce((total, sample) => total + sample.duration, 0);
+            }
+            track.decodeEnd = decodeTime;
           }
-          track.decodeEnd = decodeTime + trun.samples.reduce((total, sample) => total + sample.duration, 0);
+          ranges.sort((left, right) => left.start - right.start);
+          let coveredUntil = box.content;
+          for (const range of ranges) {
+            if (range.start !== coveredUntil) {
+              throw new Error("Fragment sample runs leave a gap or overlap in the media-data payload.");
+            }
+            coveredUntil = range.end;
+          }
+          if (coveredUntil !== box.end) {
+            throw new Error("Fragment sample runs do not cover the complete media-data payload.");
+          }
           writes.push(data.subarray(box.start, box.end));
           pendingMoof = null;
           this.fragmentCount += 1;

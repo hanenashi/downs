@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Downs muxed fMP4 fixture</title>
+  </head>
+  <body>
+    <h1>Downs muxed fMP4 fixture</h1>
+    <p id="result">Requesting generated HLS playlist…</p>
+    <script>
+      fetch("/muxed-fmp4-media/playlist.m3u8")
+        .then((response) => {
+          document.getElementById("result").textContent = `HTTP ${response.status}`;
+          return response.text();
+        })
+        .then((text) => {
+          document.body.dataset.playlist = text.startsWith("#EXTM3U") ? "loaded" : "invalid";
+        })
+        .catch((error) => {
+          document.getElementById("result").textContent = error.message;
+        });
+    </script>
+  </body>
+</html>

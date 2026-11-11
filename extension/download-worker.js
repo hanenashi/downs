@@ -479,6 +479,127 @@ async function runSplitFmp4Job(job, signal) {
   return runFmp4Tracks(job, signal, videoPlaylist, audioPlaylist);
 }
 
+async function runMuxedFmp4Job(job, signal) {
+  if (!job?.id || !job.playlistUrl) {
+    throw new DownloadError("job", "The muxed fMP4 job is missing its playlist URL.");
+  }
+  post("progress", { phase: "playlist", message: "Checking muxed fMP4 media…", completed: 0, total: 0, bytes: 0 });
+  const playlist = await fetchPlaylist(job.playlistUrl, signal);
+  const eligibility = globalThis.DownsDownload.validateDirectPlaylist(playlist, { hasSeparateAudio: false });
+  if (!eligibility.supported || eligibility.code !== "direct-fmp4-muxed-vod") {
+    throw new DownloadError(eligibility.code, eligibility.reason);
+  }
+  if (playlist.segments.length > MAX_SEGMENTS) {
+    throw new DownloadError(
+      "segment-count",
+      `The playlist has more than the ${MAX_SEGMENTS.toLocaleString()} segment safety limit.`
+    );
+  }
+
+  const initialization = await fetchBytes(playlist.mapUrl, signal, "Muxed initialization segment");
+  const mp4Probe = globalThis.muxjs?.probe || globalThis.muxjs?.mp4?.probe;
+  const tracks = mp4Probe?.tracks(initialization.bytes) || [];
+  const videoTracks = tracks.filter((track) => track.type === "video");
+  const audioTracks = tracks.filter((track) => track.type === "audio");
+  if (
+    tracks.length !== 2 ||
+    videoTracks.length !== 1 ||
+    !/^(?:avc[13]\b|av01\b)/i.test(videoTracks[0].codec || "") ||
+    audioTracks.length !== 1 ||
+    !/^mp4a\.40\.2\b/i.test(audioTracks[0].codec || "")
+  ) {
+    throw new DownloadError(
+      "fmp4-codecs",
+      "Muxed fMP4 currently requires exactly one H.264 or AV1 video track and one AAC-LC audio track."
+    );
+  }
+
+  activeSink = await createOutputSink(job.id);
+  let finalizer;
+  try {
+    finalizer = new globalThis.DownsMp4Finalizer.FlatMp4Builder(initialization.bytes);
+  } catch (error) {
+    throw new DownloadError(
+      "mp4-finalize",
+      `Could not prepare the finished MP4: ${error?.message || "invalid initialization metadata"}`
+    );
+  }
+  await activeSink.write(finalizer.initialBytes);
+  let inputBytes = initialization.bytes.byteLength;
+  let outputBytes = finalizer.initialBytes.byteLength;
+
+  post("progress", {
+    phase: "segments",
+    message: "Downloading muxed video and audio",
+    completed: 0,
+    total: playlist.segments.length,
+    bytes: inputBytes
+  });
+  await globalThis.DownsDownload.processInOrder(
+    playlist.segments,
+    FETCH_CONCURRENCY,
+    async (segment, index) => {
+      ensureNotCancelled(signal);
+      const response = await fetchBytes(segment.url, signal, "Muxed fMP4 segment", { segmentIndex: index + 1 });
+      inputBytes += response.bytes.byteLength;
+      return response.bytes;
+    },
+    async (segmentBytes, _segment, index) => {
+      ensureNotCancelled(signal);
+      let writes;
+      try {
+        writes = finalizer.consume(segmentBytes, outputBytes);
+      } catch (error) {
+        throw new DownloadError(
+          "mp4-finalize",
+          `Could not index a muxed fragment: ${error?.message || "unsupported fragment layout"}`
+        );
+      }
+      for (const part of writes) {
+        await activeSink.write(part);
+        outputBytes += part.byteLength;
+      }
+      post("progress", {
+        phase: "segments",
+        message: "Downloading muxed video and audio",
+        completed: index + 1,
+        total: playlist.segments.length,
+        bytes: inputBytes,
+        outputBytes
+      });
+    }
+  );
+
+  ensureNotCancelled(signal);
+  post("progress", {
+    phase: "remuxing",
+    message: "Finalizing MP4…",
+    completed: playlist.segments.length,
+    total: playlist.segments.length,
+    bytes: inputBytes,
+    outputBytes
+  });
+  try {
+    const movie = finalizer.finalize();
+    await activeSink.write(movie);
+    outputBytes += movie.byteLength;
+  } catch (error) {
+    throw new DownloadError(
+      "mp4-finalize",
+      `Could not finish the seekable MP4: ${error?.message || "invalid sample table"}`
+    );
+  }
+  const result = await activeSink.finish();
+  activeSink = null;
+  post("complete", {
+    file: result.file,
+    size: result.size,
+    storageName: result.storageName,
+    outputStorage: result.storageName ? "opfs" : "memory",
+    sourceBytes: inputBytes
+  });
+}
+
 async function runDashFmp4Job(job, signal) {
   if (!job?.id || !job.playlistUrl || !job.dashVideoId || !job.dashAudioId) {
     throw new DownloadError("job", "The DASH job is missing its manifest or representation selection.");
@@ -706,6 +827,7 @@ async function runSourceBundle(job, signal) {
   };
   let inputBytes = 0;
   let outputBytes = 0;
+  const muxedFmp4 = eligibility.code === "direct-fmp4-muxed-vod";
 
   const writeTracked = async (name, data) => {
     const before = data.byteLength;
@@ -729,7 +851,18 @@ async function runSourceBundle(job, signal) {
     );
   } else {
     await writeTracked("playlist.m3u8", globalThis.DownsTar.normalizedPlaylist(videoPlaylist));
-    manifest.tracks.push({ kind: "muxed", playlist: "playlist.m3u8", segments: [] });
+    const track = { kind: "muxed", playlist: "playlist.m3u8", segments: [] };
+    if (muxedFmp4) {
+      const initialization = await fetchBytes(videoPlaylist.mapUrl, signal, "Muxed initialization segment");
+      inputBytes += initialization.bytes.byteLength;
+      await writeTracked("init.mp4", initialization.bytes);
+      track.init = {
+        file: "init.mp4",
+        size: initialization.bytes.byteLength,
+        sha256: await sha256Hex(initialization.bytes)
+      };
+    }
+    manifest.tracks.push(track);
   }
 
   post("progress", { phase: "segments", message: "Capturing source media", completed: 0, total: schedule.length, bytes: inputBytes });
@@ -744,7 +877,7 @@ async function runSourceBundle(job, signal) {
     },
     async (result, segment, index) => {
       ensureNotCancelled(signal);
-      const extension = split ? "m4s" : "ts";
+      const extension = split || muxedFmp4 ? "m4s" : "ts";
       const file = globalThis.DownsTar.segmentName(segment.kind, segment.index, extension);
       await writeTracked(file, result.bytes);
       const target = split
@@ -791,6 +924,9 @@ async function runJob(job) {
   }
   if (job?.supportMode === "direct-dash-fmp4-vod") {
     return runDashFmp4Job(job, activeController.signal);
+  }
+  if (job?.supportMode === "direct-fmp4-muxed-vod") {
+    return runMuxedFmp4Job(job, activeController.signal);
   }
   if (job?.supportMode === "direct-fmp4-split-vod") {
     return runSplitFmp4Job(job, activeController.signal);

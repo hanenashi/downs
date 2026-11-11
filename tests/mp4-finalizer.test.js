@@ -40,6 +40,45 @@ function fragment(decodeTime = 0) {
   return Fmp4.concat([moof, box("mdat", new Uint8Array(8))]);
 }
 
+function muxedInitialization() {
+  const mvhd = box("mvhd", fullBox(100, [[12, 1000], [16, 0xffffffff]]));
+  const makeTrack = (id, kind) => {
+    const tkhd = box("tkhd", fullBox(84, [[12, id], [20, 0xffffffff]]));
+    const mdhd = box("mdhd", fullBox(20, [[12, 1000], [16, 0xffffffff]]));
+    const hdlr = fullBox(24);
+    hdlr.set([...kind].map((value) => value.charCodeAt(0)), 8);
+    const stsd = box("stsd", fullBox(8));
+    const stbl = box("stbl", stsd, box("stts", fullBox(8)), box("stsc", fullBox(8)), box("stsz", fullBox(12)), box("stco", fullBox(8)));
+    const mediaHeader = kind === "vide" ? box("vmhd", fullBox(8)) : box("smhd", fullBox(8));
+    return box("trak", tkhd, box("mdia", mdhd, box("hdlr", hdlr), box("minf", mediaHeader, box("dinf", fullBox(8)), stbl)));
+  };
+  const makeTrex = (id) => box("trex", fullBox(24, [[4, id], [8, 1], [12, 1000], [16, 4], [20, 0x02000000]]));
+  return Fmp4.concat([
+    box("ftyp", new Uint8Array([0x69, 0x73, 0x6f, 0x6d])),
+    box("moov", mvhd, makeTrack(1, "vide"), makeTrack(2, "soun"), box("mvex", makeTrex(1), makeTrex(2)))
+  ]);
+}
+
+function muxedFragment() {
+  const makeTraf = (trackId) => {
+    const tfhdBody = fullBox(8, [[4, trackId]]);
+    tfhdBody[1] = 2;
+    const tfdt = box("tfdt", fullBox(8, [[4, 0]]));
+    const makeTrun = () => {
+      const body = fullBox(12, [[4, 1]]);
+      body[3] = 1;
+      return box("trun", body);
+    };
+    return box("traf", box("tfhd", tfhdBody), tfdt, makeTrun(), makeTrun());
+  };
+  const moof = box("moof", box("mfhd", fullBox(8)), makeTraf(1), makeTraf(2));
+  const truns = Fmp4.walkBoxes(moof).filter((entry) => entry.type === "trun");
+  const payloadStart = moof.byteLength + 8;
+  const offsets = [payloadStart, payloadStart + 8, payloadStart + 4, payloadStart + 12];
+  truns.forEach((trun, index) => new DataView(moof.buffer).setInt32(trun.content + 8, offsets[index]));
+  return Fmp4.concat([moof, box("mdat", new Uint8Array(16))]);
+}
+
 test("turns supported movie fragments into flat sample tables", () => {
   const builder = new FlatMp4Builder(initialization());
   const writes = builder.consume(fragment(), builder.initialBytes.byteLength);
@@ -66,6 +105,20 @@ test("accepts sub-millisecond boundary rounding but rejects real timeline gaps",
   offset = strict.initialBytes.byteLength;
   for (const part of strict.consume(fragment(0), offset)) offset += part.byteLength;
   assert.throws(() => strict.consume(fragment(2002), offset), /gap or regression/);
+});
+
+test("indexes multiple tracks and sample runs sharing one media-data box", () => {
+  const builder = new FlatMp4Builder(muxedInitialization());
+  const writes = builder.consume(muxedFragment(), builder.initialBytes.byteLength);
+  const movie = builder.finalize();
+  const output = Fmp4.concat([builder.initialBytes, ...writes, movie]);
+  const top = Fmp4.boxesIn(output);
+  const walked = Fmp4.walkBoxes(output);
+
+  assert.deepEqual(top.map((entry) => entry.type), ["ftyp", "mdat", "moov"]);
+  assert.equal(walked.filter((entry) => entry.type === "trak").length, 2);
+  assert.equal(walked.filter((entry) => entry.type === "co64").length, 2);
+  assert.equal(walked.some((entry) => entry.type === "moof"), false);
 });
 
 test("run-length encodes adjacent timing values", () => {

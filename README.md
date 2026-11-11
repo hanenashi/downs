@@ -18,12 +18,12 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.13 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downs 2.14 is experimental. In addition to the bounded MPEG-TS path, persistent
 Downloads manager, request-context replay, and playback grouping, it can now
-assemble a conservative modern HLS layout: finite unencrypted fMP4/CMAF VOD
-with one separate H.264 video track and a user-selected AAC audio rendition.
-Finished DIRECT output now uses conventional flat MP4 sample tables for fast,
-reliable seeking while preserving the source H.264/AAC samples.
+assemble conservative modern HLS layouts: finite unencrypted fMP4/CMAF VOD
+with either separate H.264/AAC tracks or one muxed H.264-or-AV1 plus AAC-LC
+track pair. Finished DIRECT output uses conventional flat MP4 sample tables for
+fast, reliable seeking while preserving the encoded source samples.
 
 It can:
 
@@ -54,6 +54,8 @@ It can:
 - remux MPEG-TS with bundled mux.js, then finalize its samples into a flat MP4;
 - combine separate H.264 and AAC fMP4 initialization metadata, remap colliding
   track IDs, and finalize their samples without re-encoding;
+- finalize bounded muxed HLS/CMAF fragments containing H.264 or AV1 video plus
+  AAC-LC audio, including multiple explicit sample runs sharing one media box;
 - build truthful timing, keyframe, sample-size, and 64-bit chunk-offset tables;
 - optionally save an exact source diagnostic TAR containing fetched segments,
   local replay playlists, sizes, durations, and SHA-256 hashes;
@@ -122,6 +124,11 @@ compact **Audio** selector appears in the inspected variant before download.
 The manager fetches the chosen playlist, verifies both tracks' simple VOD shape
 and actual H.264/AAC initialization metadata, then assembles their samples into
 one seekable MP4.
+
+For a supported muxed fMP4 media playlist, Downs verifies one shared
+initialization segment containing exactly one H.264 or AV1 video track and one
+AAC-LC audio track. It indexes explicitly addressed sample runs from both
+tracks and preserves the original encoded samples in the finished seekable MP4.
 
 Players often request a master plus several variants or audio playlists while
 switching quality. Downs groups conservative same-CDN URL families and short
@@ -212,15 +219,16 @@ they do contain the complete downloaded media and should be shared deliberately.
   HLS `METHOD=AES-128`, identity-format 16-byte keys, and AES-CBC segment
   encryption. SAMPLE-AES, FairPlay, CENC/DRM, encrypted fMP4, and other key
   formats remain unsupported; Downs does not bypass DRM.
-- fMP4/CMAF support currently requires one map per track, separate H.264 video
-  and AAC audio VOD playlists whose durations differ by no more than two
-  seconds. Multiplexed fMP4, multiple map periods, and advanced edit/timeline
-  layouts remain unsupported.
-- Both DIRECT paths preserve the encoded H.264/AAC media rather than
-  re-encoding it.
-- Flat finalization accepts only the simple one-track-per-fragment layouts used
-  by the current DIRECT gates. Unexpected offsets or sample tables fail clearly
-  instead of producing a misleading file.
+- fMP4/CMAF support requires one map per track. Separate-track HLS requires
+  H.264 video and AAC audio VOD playlists whose durations differ by no more
+  than two seconds. Muxed HLS requires exactly one H.264 or AV1 video track and
+  one AAC-LC audio track with explicit fragment data offsets. Multiple map
+  periods and advanced edit/timeline layouts remain unsupported.
+- DIRECT paths preserve the encoded source media rather than re-encoding it.
+- Flat finalization accepts bounded one- or two-track fragments and validates
+  every sample run against its media-data payload. Implicit or absolute bases,
+  uncovered bytes, overlaps, unexpected offsets, and timeline regressions fail
+  clearly instead of producing a misleading file.
 - Extension-context fetches can still fail when a site requires an exact page
   path, custom headers, signed request values, or provenance that an extension
   cannot safely reproduce. Downs deliberately replays only the page origin as
@@ -282,8 +290,9 @@ node tools/replay-source-bundle.mjs /path/capture.downs-source.tar \
 The tool checks TAR header integrity, rejects unsafe archive paths, verifies
 every media file against the manifest's size and SHA-256, then rebuilds the MP4
 with the same bundled mux.js and flat finalizer used by the extension. It
-supports the current MPEG-TS and separate-track fMP4 source-bundle modes, never
-contacts the original host, and removes its temporary extraction directory.
+supports the current MPEG-TS, separate-track fMP4, and muxed fMP4 source-bundle
+modes, never contacts the original host, and removes its temporary extraction
+directory.
 It refuses to replace an existing output unless `--force` is supplied.
 `--ffprobe` is optional development diagnostics and requires a local FFprobe;
 FFprobe is not used for replay and is not bundled with Downs.
@@ -344,6 +353,14 @@ node tools/serve-fixtures.js
 # http://127.0.0.1:8765/modern-page.html
 ```
 
+Generate the deterministic muxed H.264/AAC fMP4/CMAF fixture:
+
+```bash
+tools/generate-muxed-fmp4-fixture.sh
+node tools/serve-fixtures.js
+# http://127.0.0.1:8765/muxed-fmp4-page.html
+```
+
 Generated media stays under ignored `test-artifacts/`. FFmpeg is used only to
 create and validate development fixtures; it is not part of the extension.
 
@@ -381,9 +398,9 @@ extension packages.
 
 ## Direction
 
-The immediate work is real-site Firefox/Kiwi validation of the bounded 2.13
-DASH path plus continued 2.10 Blob and 2.12 AES-128 compatibility testing. Live
-RECORD remains the next large architecture pass.
+The immediate work is real-site Firefox/Kiwi validation of the bounded 2.14
+muxed HLS/CMAF and 2.13 DASH paths, plus continued Blob and AES-128
+compatibility testing. Live RECORD remains the next large architecture pass.
 Dark mode, editable preflight filenames, and broader manager-row interactions
 remain separate UI work.
 

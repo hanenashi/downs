@@ -94,7 +94,7 @@ test("accepts only finite, clear, muxed MPEG-TS media playlists", () => {
     }).code,
     "encrypted-layout"
   );
-  assert.equal(validateDirectPlaylist(media({ segmented: "fmp4", mapUrl: "init.mp4" })).code, "fmp4");
+  assert.equal(validateDirectPlaylist(media({ segmented: "fmp4", mapUrl: "init.mp4" })).code, "fmp4-layout");
   assert.equal(validateDirectPlaylist(media({ hasByteRanges: true })).code, "byte-range");
   assert.equal(validateDirectPlaylist(media({ hasDiscontinuities: true })).code, "discontinuity");
   assert.equal(validateDirectPlaylist(media({ hasGaps: true })).code, "gap");
@@ -153,6 +153,23 @@ test("accepts only a simple clear fMP4 video and separate audio pair", () => {
       segments: [{ url: "https://example.com/audio-1.m4s", duration: 5 }]
     }).code,
     "track-alignment"
+  );
+});
+
+test("accepts a simple clear muxed fMP4 VOD playlist", () => {
+  const muxed = media({
+    segmented: "fmp4",
+    mapUrl: "https://example.com/init.mp4",
+    maps: [{ url: "https://example.com/init.mp4" }],
+    segments: [{ url: "https://example.com/one.m4s", duration: 4 }]
+  });
+
+  assert.equal(validateDirectPlaylist(muxed).code, "direct-fmp4-muxed-vod");
+  assert.equal(validateDirectPlaylist({ ...muxed, encrypted: true }).code, "encrypted");
+  assert.equal(validateDirectPlaylist({ ...muxed, hasGaps: true }).code, "fmp4-layout");
+  assert.equal(
+    validateDirectPlaylist({ ...muxed, maps: [{ url: muxed.mapUrl, byteRange: "100@0" }] }).code,
+    "fmp4-layout"
   );
 });
 

@@ -1,5 +1,27 @@
 # Downs handoff — seek-safe MP4 pass + future companion seam
 
+## 2.14 bounded muxed HLS/CMAF DIRECT update
+
+Downs now accepts a second narrow HLS fMP4 shape: finite, clear VOD with one
+`EXT-X-MAP`, no byte ranges, gaps, discontinuities, or map changes, and a shared
+initialization segment containing exactly one H.264 or AV1 video track plus one
+AAC-LC audio track. The encoded samples are copied without transcoding.
+
+The flat-MP4 finalizer now indexes multiple `traf` boxes and multiple explicit
+`trun` sample runs inside one movie fragment. It requires complex fragments to
+use the movie fragment as their data-offset base, validates complete non-
+overlapping coverage of each `mdat`, and maintains independent per-track decode
+timelines and chunk tables. Ambiguous bases, implicit offsets, payload gaps or
+overlaps, unknown tracks, and timing regressions fail explicitly. Source bundles
+preserve the shared init plus exact `.m4s` fragments and a local playlist.
+
+Chrome-for-Testing 156 completed the generated six-second H.264/AAC fixture
+through popup, queue, worker, OPFS, and offline source-bundle replay. The
+256,787-byte output contained 150 video frames plus 283 audio frames and fully
+decoded without errors. The reported real 144p AV1/AAC specimen also completed
+through the packaged extension: 146 fragments, 6,901,421 bytes, 583.648 seconds,
+14,007 AV1 frames, 27,359 AAC frames, and a clean full decode.
+
 ## 2.13 bounded DASH fMP4 DIRECT update
 
 Downs now materializes inherited DASH SegmentTemplate metadata into bounded
