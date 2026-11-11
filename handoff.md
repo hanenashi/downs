@@ -4,9 +4,10 @@
 
 Settings now separate interface density from manager placement. **Simple** mode
 keeps the detected-stream list and essential job controls, hides diagnostic
-inspection/source-bundle UI, automatically chooses the highest supported
-advertised video rendition, and queues its MP4. **Detailed** mode
-preserves the existing inspection-first workflow and every diagnostic action.
+inspection/source-bundle UI, automatically chooses the highest advertised video
+rendition, and queues its MP4 when that child passes the normal support gates.
+**Detailed** mode preserves the existing inspection-first workflow and every
+diagnostic action.
 
 The Downloads page can open in a reused 460×720 compact browser window or a
 normal browser tab. It remains the persistent owner of the media worker; the

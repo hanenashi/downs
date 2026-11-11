@@ -305,3 +305,17 @@ The 155,366-byte flat MP4 contained 150 AV1 frames at 320×180 and 283 mono AAC
 frames at 48 kHz. Video duration was 6.000 seconds, audio was 6.021 seconds, and
 a full FFmpeg decode completed without errors. The only console entry was the
 fixture page's irrelevant missing favicon request.
+
+## 2026-11-11 — Simple workflow and persistent manager surfaces
+
+Chrome-for-Testing 156 loaded the packaged 2.17 extension and exercised the
+settings through the real Downloads page. Selecting **Compact window** moved
+the existing page into a 460×720 popup-type browser window; selecting **Browser
+tab** moved the same page back into a normal window without navigation or
+reload. The Simple class applied immediately.
+
+At compact size, the Settings pane had a 633-pixel viewport and 819 pixels of
+content with vertical scrolling enabled, so filename, interface, manager, and
+Done controls remained reachable. The extension validator, syntax checks, and
+all 82 dependency-free unit tests passed. Real toolbar-popup interaction on
+Kiwi and Firefox remains the manual compatibility gate.

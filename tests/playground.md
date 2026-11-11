@@ -104,6 +104,26 @@ exploration pass.
 Repeat high-value cases in Chrome desktop and Kiwi Android. Use Firefox when a
 popup or browser-specific API difference is involved.
 
+## 4. Check workflow surfaces
+
+For UI passes, verify both independent settings rather than treating them as one
+mode:
+
+- **Simple** follows the highest advertised master rendition, retains the
+  default audio choice, queues MP4 only after the child passes the normal support
+  gate, and does not expose source-bundle or technical-detail controls.
+- **Detailed** preserves representation/audio selection, technical URLs,
+  rejection reasons, and source-bundle actions.
+- **Compact window** creates one persistent 460×720 manager and reuses it for
+  later jobs.
+- **Browser tab** moves that same manager page into a normal window. Switching
+  in either direction must not reload the page or turn an active job into
+  `manager-closed`.
+
+At compact width, open Settings and confirm every choice remains reachable by
+scrolling. Close only the transient toolbar popup during an active fixture job;
+processing must continue because the Downloads page owns the worker.
+
 ## Privacy and repository hygiene
 
 Test only open or user-authorized media. Never commit downloaded media, cookies,

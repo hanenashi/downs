@@ -4,16 +4,18 @@ Research date: 2026-11-10. Status: ideas / investigation, **not an implementatio
 
 ## Goal
 
-Expand Downs' ability to discover and save authorized, non-DRM media while protecting the stable 2.9 DIRECT pipeline. Make small, testable additions rather than replacing the download engine.
+Expand Downs' ability to discover and save authorized, non-DRM media while
+protecting the stable DIRECT pipeline established in 2.9. Make small, testable
+additions rather than replacing the download engine.
 
 Compared repositories:
-- Downs: https://github.com/hanenashi/downs (main, 2.9 at review)
+- Downs: https://github.com/hanenashi/downs (main; baseline updated through 2.17)
 - Live Stream Downloader: https://github.com/chandler-stimson/live-stream-downloader (master, v3)
 - Upstream license: MPL-2.0, see upstream LICENSE. Ideas can be independently implemented; direct source reuse requires compliance with MPL-2.0.
 
 ## Current baseline worth protecting
 
-Downs 2.9 already:
+Downs 2.17 already:
 - Detects network M3U8 requests, inspects master/media playlists, variants and audio renditions.
 - Supports finite, unencrypted MPEG-TS VOD remux through bundled mux.js.
 - Supports a bounded split H.264-or-AV1 + AAC fMP4/CMAF VOD layout.
@@ -21,6 +23,8 @@ Downs 2.9 already:
   multi-track sample-run addressing.
 - Finalizes actual media samples as **flat, seek-friendly MP4** with timing and sync-sample tables, without re-encoding.
 - Maintains persistent jobs, OPFS-backed output, explicit save/export, cancellation, retries and source-bundle TAR diagnostic replay.
+- Offers a simple one-click workflow or the full diagnostic interface, and keeps
+  the persistent Downloads page in either a compact browser window or normal tab.
 - Replays sanitized Referer context through temporary exact-URL rules; does not persist cookies/authorization secrets.
 - Targets Chromium/Firefox and requires care around Kiwi Android compatibility.
 
@@ -107,6 +111,11 @@ Tests: fixture server with shifting live window, late arrival, repeated URLs, se
 
 ## Priority D — optional workflow/UI improvements
 
+- **Interface density and manager placement:** landed in 2.17. Simple mode
+  follows the highest advertised video rendition and queues it only after the
+  ordinary support gate passes; Detailed mode retains inspection and source
+  bundles. The same persistent manager page moves between a compact window and
+  normal tab without reloading active work.
 - **Concurrency:** Upstream exposes 1–5 threads via `v3/data/job/plugins/threads.js`; Downs already fetches up to four TS segments concurrently. Consider a bounded advanced setting only after performance benchmarks; preserve ordered consumption and memory ceilings.
 - **Direct file writing:** Upstream `v3/data/job/mget/plugins/disk.js` uses a File System Access API writer. Downs' OPFS/private-copy then explicit Save design is intentional. An opt-in direct-to-file mode may help huge live recordings on supporting desktop browsers, but must degrade gracefully on Firefox/Kiwi and expose partial-file semantics.
 - **Filenames:** Upstream `v3/data/job/build.js` supports placeholders and page-derived values. Downs already offers suggested title/date/hash. Explore only a minimal, sanitized naming-template option if users need it; never execute selectors from untrusted input without controls.
@@ -129,8 +138,10 @@ Tests: fixture server with shifting live window, late arrival, repeated URLs, se
 2. **AES-128 TS DIRECT pass:** separately gated, with synthetic encrypted fixtures and regression playback tests.
 3. **DASH feasibility spike:** complete in 2.13 for conservative finite
    SegmentTemplate H.264/AAC-LC, with AV1 video parity added in 2.16.
-4. **Live RECORD architecture proposal:** design state, segment identity, storage and recovery; implement only after review.
-5. Optional direct-write/agent interface based on actual user need.
+4. **Simple workflow / compact manager:** complete in 2.17 without moving work
+   into the transient toolbar popup.
+5. **Live RECORD architecture proposal:** design state, segment identity, storage and recovery; implement only after review.
+6. Optional direct-write/agent interface based on actual user need.
 
 For every pass:
 - Write down supported/unsupported media gates before coding.

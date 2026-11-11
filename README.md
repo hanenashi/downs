@@ -161,11 +161,13 @@ title** preserves the existing behavior, **Date stamp** produces names such as
 `k7m2p9x4qa.mp4`. Existing job names are not changed. **Show full URLs in stream
 list** restores URL-first popup rows for technical testing; full URLs remain
 available in playlist details regardless of that setting. **Simple** mode keeps
-the stream list and essential download actions, automatically choosing the highest
-supported advertised video rendition and queuing its MP4. **Detailed** mode restores technical
+the stream list and essential download actions, automatically choosing the
+highest advertised video rendition and queuing its MP4 when that child passes
+the normal support gates. **Detailed** mode restores technical
 inspection and source-bundle controls. **Download manager** chooses a reused
 **Compact window** or ordinary **Browser tab** and moves the current manager
-immediately; existing installations retain the tab behavior until this setting is changed.
+immediately; existing installations retain the tab behavior until this setting
+is changed.
 
 ## Kiwi Android compatibility target
 
