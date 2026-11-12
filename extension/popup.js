@@ -14,6 +14,7 @@ let parentInspection = null;
 let activePageTitle = "";
 let showFullUrls = false;
 let interfaceMode = "detailed";
+let autoStartSimple = true;
 const autoQueuedDownloads = new Set();
 const expandedGroups = new Set();
 const inspectionSummaries = new Map();
@@ -166,7 +167,12 @@ function applyInterfaceMode(mode) {
 }
 
 function autoQueuePrimaryDownload(action, key) {
-  if (interfaceMode !== "simple" || !action || autoQueuedDownloads.has(key)) return;
+  if (
+    interfaceMode !== "simple" ||
+    !autoStartSimple ||
+    !action ||
+    autoQueuedDownloads.has(key)
+  ) return;
   const button = action.querySelector(".download-button:not(:disabled)");
   if (!button) return;
   autoQueuedDownloads.add(key);
@@ -1064,9 +1070,11 @@ async function loadPopupSettings() {
     const stored = await ext.storage.local.get(globalThis.DownsDownload.SETTINGS_KEY);
     const settings = stored[globalThis.DownsDownload.SETTINGS_KEY] || {};
     showFullUrls = Boolean(settings.showFullUrls);
+    autoStartSimple = settings.autoStartSimple !== false;
     applyInterfaceMode(settings.interfaceMode);
   } catch (_error) {
     showFullUrls = false;
+    autoStartSimple = true;
     applyInterfaceMode("detailed");
   }
 }
@@ -1093,6 +1101,7 @@ ext.storage.onChanged.addListener((changes, areaName) => {
     if (Object.hasOwn(changes, globalThis.DownsDownload.SETTINGS_KEY)) {
       const settings = changes[globalThis.DownsDownload.SETTINGS_KEY]?.newValue || {};
       showFullUrls = Boolean(settings.showFullUrls);
+      autoStartSimple = settings.autoStartSimple !== false;
       applyInterfaceMode(settings.interfaceMode);
       renderLinks();
     }

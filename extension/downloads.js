@@ -17,6 +17,7 @@ const hashExampleEl = document.getElementById("hash-example");
 const filenameModeInputs = [...document.querySelectorAll('input[name="filename-mode"]')];
 const interfaceModeInputs = [...document.querySelectorAll('input[name="interface-mode"]')];
 const managerSurfaceInputs = [...document.querySelectorAll('input[name="manager-surface"]')];
+const autoStartSimpleInput = document.getElementById("auto-start-simple");
 const showFullUrlsInput = document.getElementById("show-full-urls");
 
 const jobs = new Map();
@@ -735,6 +736,7 @@ async function loadSettings() {
   }
   dateExampleEl.textContent = globalThis.DownsDownload.dateStampFilename(new Date());
   hashExampleEl.textContent = `${globalThis.DownsDownload.randomHash()}.mp4`;
+  autoStartSimpleInput.checked = settings.autoStartSimple !== false;
   showFullUrlsInput.checked = Boolean(settings.showFullUrls);
   const selectedInterfaceMode = settings.interfaceMode === "simple" ? "simple" : "detailed";
   const selectedManagerSurface = settings.managerSurface === "compact" ? "compact" : "tab";
@@ -847,6 +849,13 @@ for (const input of interfaceModeInputs) {
     });
   });
 }
+autoStartSimpleInput.addEventListener("change", () => {
+  void saveSettings({ autoStartSimple: autoStartSimpleInput.checked }).then(() => {
+    announce(autoStartSimpleInput.checked
+      ? "Simple mode will start supported MP4 downloads automatically."
+      : "Simple mode will wait for the Download button.");
+  });
+});
 for (const input of managerSurfaceInputs) {
   input.addEventListener("change", () => {
     if (!input.checked) return;

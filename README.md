@@ -18,7 +18,7 @@ No Python helper. No localhost bridge. No external FFmpeg for the normal path.
 
 ## Current status
 
-Downs 2.17.1 is experimental. In addition to the bounded MPEG-TS path, persistent
+Downs 2.17.2 is experimental. In addition to the bounded MPEG-TS path, persistent
 Downloads manager, request-context replay, and playback grouping, it can now
 assemble conservative modern HLS layouts: finite unencrypted fMP4/CMAF VOD
 with either separate H.264-or-AV1 video and AAC tracks or one muxed
@@ -165,7 +165,8 @@ list** restores URL-first popup rows for technical testing; full URLs remain
 available in playlist details regardless of that setting. **Simple** mode keeps
 the stream list and essential download actions, automatically choosing the
 highest advertised video rendition and queuing its MP4 when that child passes
-the normal support gates. **Detailed** mode restores technical
+the normal support gates. Disable **Start downloads automatically** to retain
+the minimal interface but wait on the ordinary Download button. **Detailed** mode restores technical
 inspection and source-bundle controls. **Download manager** chooses a reused
 **Compact window** or ordinary **Browser tab** and moves the current manager
 immediately; existing installations retain the tab behavior until this setting
@@ -423,7 +424,7 @@ extension packages.
 
 ## Direction
 
-The immediate work is real-site Firefox/Kiwi validation of the bounded 2.17.1
+The immediate work is real-site Firefox/Kiwi validation of the bounded 2.17.2
 AV1 parity, DASH source-bundle, muxed HLS/CMAF, Blob, and AES-128
 compatibility testing. Live RECORD remains the next large architecture pass.
 Dark mode, editable preflight filenames, and broader manager-row interactions

@@ -1,5 +1,18 @@
 # Downs handoff — seek-safe MP4 pass + future companion seam
 
+## 2.17.2 optional Simple-mode auto-start
+
+Simple mode's automatic MP4 handoff is now controlled by **Start downloads
+automatically** in Settings. It defaults on for compatibility with 2.17, but
+when disabled the popup retains its minimal presentation and stops on the normal
+Download button. Detailed mode remains manual and hides this irrelevant toggle.
+
+Chrome-for-Testing 156 verified the setting at 460×720, persistence across
+Simple/Detailed switches, zero synthetic primary-button activations when off,
+and exactly one when on. The compact Settings pane remained scrollable with no
+console warnings or errors. Physical Kiwi and Firefox interaction remains the
+manual compatibility gate.
+
 ## 2.17.1 settings access and short-window scrolling
 
 The toolbar popup now exposes **Settings** beside Refresh. It opens or focuses

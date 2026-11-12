@@ -345,8 +345,16 @@ h1 {
   border-top: 1px solid var(--line);
 }
 
-.detailed-setting {
+.setting-choice.detailed-setting {
   display: none;
+}
+
+.setting-choice.simple-only-setting {
+  display: none;
+}
+
+.simple-mode .setting-choice.simple-only-setting {
+  display: grid;
 }
 
 .simple-mode .job-meta,

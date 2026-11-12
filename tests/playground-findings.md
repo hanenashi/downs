@@ -332,3 +332,14 @@ After moving the same page to a normal browser window and shortening it to
 pane remained exactly viewport-bounded. Its 867-pixel content scrolled 394
 pixels, bringing the complete manager choice, explanatory note, and Done button
 inside the viewport. Physical High Sierra Firefox verification remains pending.
+
+## 2026-11-11 — Optional Simple-mode auto-start
+
+Chrome-for-Testing 156 exercised **Start downloads automatically** in the
+packaged 2.17.2 compact manager at 460×720. The checked state persisted across
+Detailed and Simple mode changes; the control disappeared in Detailed mode and
+returned in Simple mode without losing its value.
+
+A focused popup interaction probe produced zero primary Download-button clicks
+with the setting disabled and exactly one with it enabled. The Settings pane
+remained internally scrollable and no console warning or error was recorded.
